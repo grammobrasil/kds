@@ -1,0 +1,37 @@
+{% block scripts %} 
+
+    <script>
+        var endpoint = "{{ url_for(request.endpoint) }}";
+        var thing = "{{ thing }}"
+    </script>
+    <script src="{{url_for('static', filename='js/my_jquery.js')}}"></script>
+    <script src="{{url_for('static', filename='js/daterange.js')}}"></script>
+
+{% endblock scripts %}
+
+{% block content %}
+<center>
+    <div class="row">
+        <div class="col-sm-6">
+            <p>Período:</p>
+            <form>
+<!--                <input id="dtpicker" type="text" name="daterange" value="{{ request.args.get('start') }} - {{request.args.get('end')}}"> -->
+                <input id="dtpicker" type="text" name="daterange">
+            </form>
+        </div>
+        <div class="col-sm-6">
+            <p>Filtro:</p>
+            <input id="filter_table" type="text" placeholder="Filtrar...">
+        </div>
+
+    </div>
+    <div class="container">
+    
+        <h2>{{ thing }}</h2>
+        {% for table in tables %}
+        <h2>{{titles[loop.index]}}</h2>
+        {{ table|safe }}
+        {% endfor %}
+    </div>
+</center>
+{% endblock %}

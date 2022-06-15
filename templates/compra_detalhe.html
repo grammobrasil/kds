@@ -1,0 +1,95 @@
+{% block scripts %} 
+
+    <script>
+        var endpoint = "{{ url_for(request.endpoint) }}";
+        var thing = "{{ thing }}"
+    </script>
+    <script src="{{url_for('static', filename='js/my_jquery.js')}}"></script>
+    <script src="{{url_for('static', filename='js/daterange.js')}}"></script>
+
+{% endblock scripts %}
+
+{% block content %}
+
+<style>
+div.ex1 {
+  width: 900px;
+  margin: auto;
+  border: 4px solid;
+}
+
+div.ex2 {
+  max-width: 800px;
+  margin: auto;
+  border: 2px solid;
+}
+    
+div.ex3 {
+  max-width: 500px;
+  margin: auto;
+  border: 1px solid;
+}
+
+</style>
+
+
+<div>
+
+    <div>
+        <h1>Compra número {{ pedidos[0]['compra_num'] }}</h1>
+    </div>
+
+    <div>
+        Nome: {{ pedidos[0]['conteúdo_pedido'][0]['usr'][0]['bio']['nome'] }}<br>
+        Telefone: ({{ pedidos[0]['conteúdo_pedido'][0]['usr'][0]['contato']['DDD'] }}) {{ pedidos[0]['conteúdo_pedido'][0]['usr'][0]['contato']['fone'] }}<br>
+        Email: {{ pedidos[0]['conteúdo_pedido'][0]['usr'][0]['contato']['email'] }}<br>
+
+    </div> 
+
+    <div class="ex2">
+        {% if pedidos[0]['conteúdo_pedido'] %}
+            <div class="ex2">
+            <h3>Pedidos:</h3>
+            {% for pedido in pedidos %}
+                <div class="ex2">
+                <b>Pedido número: {{ pedido['_id'] }}</b><br>
+                Hora: {{ pedido['conteúdo_pedido'][0]["entrega_hora"] }}<br>
+                Endereço:
+                    {% if pedido['conteúdo_pedido'][0]['end'] %}
+                        {{ pedido['conteúdo_pedido'][0]['end'][0]['endereços']['geo'] }}<br>
+                        Km: {{ pedido['conteúdo_pedido'][0]['bubble_pedido']['km'] }}
+                    {% else %}
+                        Sem endereço
+                    {% endif %}
+                    <br>
+                    
+                    <div class="ex3">
+                    {% if pedido['conteúdo_pedido'][0] %}
+                        {% for item in pedido['conteúdo_pedido']|sort(attribute="item") %}
+                            <div class="ex3">
+                            Item número {{ item['_id']['item'] }}<br>
+                                {% for  conteúdo in item['conteúdo_item'] %}
+                                    {{ conteúdo[0]['dados']['nome'] }}:
+                                    {{ conteúdo[0]['qtd'] }}<br>
+                                {% endfor %}
+         
+                            </div>   
+                        {% endfor %}
+                    {% endif %}
+                    </div>
+                </div>
+                
+            {% endfor %}
+
+
+                    
+            </div>
+        {% else %}
+             <p> Compra sem pedidos </p>
+        {% endif %}
+
+    </div> 
+    
+    
+</div>
+{% endblock %}

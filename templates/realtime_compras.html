@@ -1,0 +1,329 @@
+{% block scripts %} 
+    <script src="{{url_for('static', filename='js/daterange.js')}}"></script>
+    <script src="{{url_for('static', filename='js/my_jquery.js')}}"></script>
+
+ 
+    <script>
+        var endpoint = "{{ url_for(request.endpoint) }}";
+        var thing = "{{ thing }}"
+    </script>
+
+{% endblock scripts %}
+
+    <script>
+        var url_compra_detalhe = "{{ url_for('compra_detalhe')}}" 
+        var formatter = Intl.NumberFormat('pt-br', {style: 'currency',currency: 'BRL',})
+        var eventSource_url = 
+            "{{ url_for('listen') }}"
+            + "?coll=compras"
+            + "&start=" + new Date(sessionStorage.getItem('dp_start')).toISOString()
+            + "&end=" + new Date(sessionStorage.getItem('dp_end')).toISOString()
+        var eventSource = new EventSource(eventSource_url)
+        
+        eventSource.addEventListener("online", function(e) {
+
+            data = JSON.parse(e.data)
+            
+            $("#compras_table tr:has(td)").remove();
+            var tr_title = $('<tr>').append(
+                $('<td></td>').text('Número'),
+                $('<td></td>').text('Nome cliente'),
+                $('<td></td>').text('Data e hora'),
+                $('<td></td>').text('R$ bruto'),
+                $('<td></td>').text('R$ pago'),
+                $('<td></td>').text('Status produção'),
+                $('<td></td>').text('Meio Pgto'),
+                $('<td></td>').text('Status Pgto'),
+                $('<td></td>').text('NF'),
+                ).attr('class','tr_title')
+
+            $('#compras_table').append(tr_title);
+
+            $.each(data, function(i, item) {
+                var tr = $('<tr>').append(
+
+                    // format the url button for details on each 'compra'
+                    $('<td></td>').html(
+                        '<button class="compra_button" onclick=$("#compra_detalhe").load("'
+                        +url_compra_detalhe
+                        +'?compra_num=' 
+                        + item['número']+'").show()>'
+                        + item['número']
+                        +'</button>'),
+                    
+                    // Name of the buyer
+                    $('<td></td>').text(nome = item['bio']['nome'] || ''),
+
+                    // format the time of the 'compra'
+                    $('<td></td>').text(new Date(item['bubble']['created_date']).toLocaleDateString('pt-br',{hour: '2-digit', minute:'2-digit'})),
+
+                    // format the value of the "Compra - total", convert to R$0,00 if isNaN
+                    $('<td></td>').text(formatter.format(total = item['bubble']['valor total'] || 0)).attr('class','total_value'),
+
+                    // format the value of the "Compra' - cobrar", convert to R$0,00 if isNaN
+                    $('<td></td>').text(formatter.format(total = item['bubble']['cobrar'] || 0)).attr('class','cobrar_value').attr('orig_value',item['bubble']['cobrar']),
+
+                    // Check if theres 'bubble status'
+                    $('<td></td>').text(status_bubble = item['bubble']['status'] || '').attr('class','status_bubble'),
+
+                    // format the dropdown menu to update the payment method of each 'compra'
+                    $('<td></td>').html(function() {                        
+                        var tmp = '<select class="method" id='+item['número']+'>'
+                            +'<option value="" disabled selected>Método</option>'
+                            +'<option value="getnet">Getnet</option>'
+                            +'<option value="pix">Pix</option>'
+                            +'<option value="mp">Mercado Pago</option>'
+                            +'<option value="cash">Dinheiro</option>'
+                            +'<option value="other">Outros</option>'
+                        +'</select>'
+                        return tmp
+                        }),
+                    
+                    // format the dropdown menu to update the payment status of each 'compra'
+                    $('<td></td>').html(function() {                        
+                        var tmp = '<select class="status" id='+item['número']+'>'
+                            +'<option value="" disabled selected>Status</option>'
+                            +'<option value="approved">Pago</option>'
+                            +'<option value="in_process">Pendente</option>'
+                            +'<option value="free">Cortesia</option>'
+                            +'<option value="canceled">Cancelado</option>'
+                        +'</select>'
+                        return tmp
+                        }),
+
+                    // Format the NF button
+                    $('<td></td>').html(function() {
+                        if (item['nf_num']) {
+                            $(this).addClass('NF_issued');
+                            return item['nf_num'];
+                        }
+                        else {
+                            return '<button id="NF_trigger" compra_num="'+item['número']+'">Emitir</button>'
+                        }
+                    }),
+                
+                );
+
+                $('#compras_table').append(tr);
+
+                // attrib the method of current 'compra' if it exists
+                if (item['pgto_method'] != undefined) {
+                    $('#'+item['número']+'.method  option[value='+item['pgto_method']+']').attr('selected','selected');
+                }
+                // attrib the status of current 'compra' if it exists
+                if (item['pgto_status'] != undefined) {
+                    $('#'+item['número']+'.status  option[value='+item['pgto_status']+']').attr('selected','selected');
+                }
+                                
+                // Add the class 'hide' the <tr> with multiples specifc values initially
+                $('#compras_table td').filter(function(){
+                    if ($(this).html() == "Pedido iniciado." ||
+                        $(this).html() == "R$&nbsp;0,00" ||
+                        $(this).html() == "Deletado pelo cliente" ||
+                        $(this).html() == "Rafael Thiesen" ||
+                        $(this).html() == "tiago medeiros villarinho" )
+                        return this
+                    }).closest('tr').addClass("hide");
+                                
+                // Add the 'hide' class the <tr> with 'Cortesia' and 'Cancelado' selected
+                $('.status option:selected').filter(function(){
+                    if ($(this).val() == "free" ||
+                        $(this).val() == "canceled")
+                        return this
+                }).closest('tr').addClass("hide");
+
+                // Add the 'pag' class the <tr> with 'approved' selected
+                $('.status option:selected').filter(function(){
+                    return $(this).val() == "approved";
+                }).closest('tr').addClass("pago");
+                
+                // Add the class 'hide' the <tr> with multiples specifc values initially
+                $('#compras_table td').filter(function(){
+                    if ($(this).hasClass('NF_issued') )
+                        return this
+                    }).closest('tr').addClass("NF_issued");
+                
+            });
+            
+            // post the updates
+            $(".method, .status").change(function(){
+                $.post(
+                    endpoint,
+                    {
+                        dest: 'compras',
+                        num: $(this).attr('id'),
+                        class: $(this).attr('class'),
+                        value: $(this).val(),
+                    }
+                );
+            });
+            
+            // post the updates
+            $("button#NF_trigger").click(function() {
+                this_button = $(this)
+                $.post(
+                    endpoint,
+                    {
+                        dest: 'NF',
+                        compra_num: $(this).attr('compra_num'),
+                    },
+                    function(data) {
+                        this_button.replaceWith(data);
+                    }
+                    
+                )
+            });
+
+            // Hide the rows where <td> has 'hide' class
+            $('tr.hide').hide();
+
+            // Sum all values in the screen (not hidden, not title)
+            var sum_total = 0
+            $('tr:not(.hide):not(.tr_title)').each(function () {
+                cobrar_value = parseFloat($(this).find('td.cobrar_value').attr('orig_value')) || 0;
+                sum_total += cobrar_value 
+                //console.log(cobrar_value)
+            });
+            $('#sum_total').text(formatter.format(sum_total))
+            
+            // Sum all values in the TR with "pago"
+            var sum_pago = 0
+            $('tr.pago:not(.hide):not(.tr_title)').each(function () {
+                pago_value = parseFloat($(this).find('td.cobrar_value').attr('orig_value')) || 0;
+                sum_pago += pago_value
+                //console.log(pago_value)
+            });
+            $('#sum_pago').text(formatter.format(sum_pago));
+                        
+            // Sum all values with "NF_issued"
+            var sum_nf = 0
+            $('tr.NF_issued:not(.hide):not(.tr_title)').each(function () {
+                nf_value = parseFloat($(this).find('td.cobrar_value').attr('orig_value')) || 0;
+                sum_nf += nf_value
+                //console.log(nf_value)
+            });
+            $('#sum_nf').text(formatter.format(sum_nf));
+
+        }, false)
+
+        // Function to hide the fields with specif values or names
+        function hide_field(id, name) {
+             $(id).change(function() {
+                if(this.checked) {
+                    $('#compras_table td').filter(function(){
+                        return $(this).html() == name;
+                    }).closest('tr').hide().addClass("hide");;
+                } else {
+                    $('#compras_table td').filter(function(){
+                        return $(this).html() == name;
+                    }).closest('tr').show().removeClass("hide");
+
+                }
+            });
+        }
+
+        // Function to filter the table by selector
+        function select_filter(_class, _value) {
+            $('.select_filter').change(function() {
+                if($(this).val() == _value) {
+                    $(_class+' option:selected').filter(function(){
+                        return $(this).val() != _value;
+                        }).closest('tr').hide();
+                }
+            });
+        }
+
+        hide_field('#hide_rafael', "Rafael Thiesen")
+        hide_field('#hide_villa', "tiago medeiros villarinho")
+        hide_field('#hide_zero', "R$&nbsp;0,00")
+        hide_field('#hide_pedidoiniciado', "Pedido iniciado.")
+        hide_field('#hide_deletado', "Deletado pelo cliente")
+        
+        select_filter('.status', 'approved')
+        select_filter('.status', 'in_process')
+        select_filter('.status', 'free')
+        select_filter('.status', 'canceled')
+        select_filter('.method', 'getnet')
+        select_filter('.method', 'pix')
+        select_filter('.method', 'mp')
+        select_filter('.method', 'cash')
+        select_filter('.method', 'other')
+        
+        // toggle 'hide_free' checkbox on
+        $('#hide_free').change(function() {
+            if(this.checked) {
+                $('.status option:selected').filter(function(){
+                    return $(this).val() == "free";
+                }).closest('tr').hide().addClass("hide");;
+            } else {
+                $('.status option:selected').filter(function(){
+                    return $(this).val() == "free";
+                }).closest('tr').show().removeClass("hide");
+
+            }
+        });
+        
+        // Hide the "compra detalhes" popup on click
+        $(".popup").click(function() {
+           $(this).hide()
+        });
+
+    </script>
+
+
+    <style>
+    .popup {
+      background-color: white;
+      position: absolute;
+      z-index: 0;
+    }
+        
+    .border_rounded {
+      border: 1px solid blue;
+      border-radius: 12px;
+      padding: 5px;
+    }        
+    </style>
+{% block content %}
+
+
+<div class="container">
+    <h1>Compras em tempo real</h1>
+    <h3>Total em tela: <label id="sum_total"/> - Total Pago: <label id="sum_pago"/> - Total NF: <label id="sum_nf"/></h3>
+    <div class="border_rounded">
+        <h4>Filtros:</h4>
+        <form><input id="dtpicker" name="daterange" size="30"></form>
+        <select class="select_filter" id="select_method">
+            <option value="methos" selected>Método</option>
+            <option value="getnet">Getnet</option>
+            <option value="pix">Pix</option>
+            <option value="mp">Mercado Pago</option>
+            <option value="cash">Dinheiro</option>
+            <option value="other">Outros</option>
+        </select>
+        <select class="select_filter" id="select_status">
+            <option value="status" selected>Status</option>
+            <option value="approved">Pago</option>
+            <option value="in_process">Pendente</option>
+            <option value="free">Cortesia</option>
+            <option value="canceled">Cancelado</option>
+        </select>
+        <input id="filter_table" type="text" placeholder="Pesquisa...">
+        <br>
+        <input type="checkbox" id="hide_zero" checked> Zeros -
+        <input type="checkbox" id="hide_pedidoiniciado" checked> "Pedido iniciado" -
+        <input type="checkbox" id="hide_deletado" checked> Deletado -
+        <input type="checkbox" id="hide_free" checked> Cortesias -
+        <input type="checkbox" id="hide_canceled" checked> Cancelados -
+        <input type="checkbox" id="hide_rafael" checked> Pedidos Rafael -
+        <input type="checkbox" id="hide_villa" checked> Pedidos Villa -
+
+    </div>
+
+    <div class="popup border_rounded" id="compra_detalhe"></div>
+                
+    <div class="border_rounded">
+        <table id="compras_table" class="table"></table>
+    </div>
+</div>
+{% endblock %}

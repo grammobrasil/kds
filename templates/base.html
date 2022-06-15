@@ -1,0 +1,53 @@
+{% extends "bootstrap/base.html" %}
+
+{% block title %}KDS - Grammo Brasil{% endblock title%}
+
+{% block meta %}
+{% endblock meta%}
+
+{% block styles %}
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@100;400&display=swap">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+
+    <script src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script src="{{url_for('static', filename='js/my_jquery.js')}}"></script>
+
+    <script src="https://code.jquery.com/ui/1.13.1/jquery-ui.js"></script>
+
+    <style> body, h1, h2, h3, h4, h5, h6  {font-family: 'Montserrat', sans-serif;}</style>
+{% endblock styles %}
+
+
+{% block body %}
+
+    <div class="container">
+        <img class="jumbotron-image" src="{{url_for('static', filename='cover2.png')}}"/>
+        <h1>KDS - Grammo Brasil</h1>
+    </div>
+
+   <div class="container">
+        {% if current_user.is_authenticated %}
+          Olá {{ current_user.username }}
+        {% endif %}
+    </div>
+
+    {% block navbar %}
+    <div class="container">
+        <button onclick='window.location.href="{{ url_for('logout') }}";')><u><b>LOGOUT</b></u></button>        
+        <button onclick=$("#main_block").load("{{ url_for('realtime_compras') }}")>Compras tempo real</button>
+        <button onclick=$("#main_block").load("{{ url_for('vendas_produtos') }}")>Total vendas por produtos</button>
+        <button onclick=$("#main_block").load("{{ url_for('lista_clientes') }}")>Lista de clientes</button>            
+        <button onclick=$("#main_block").load("{{ url_for('heatmap_grammo') }}")>Mapa de calor endereços</button>
+        
+    </div>
+    {% endblock navbar %}
+
+    {% block content %}
+        <div id="main_block" class="container">
+        </div>
+    {% endblock  %}
+
+{% endblock body %}

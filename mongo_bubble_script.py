@@ -1,0 +1,41 @@
+import os
+from functions_mp import *
+from functions_bubble import *
+from functions_internal import *
+import pymongo
+
+from config import Config
+client = pymongo.MongoClient(Config.atlas_access)
+db = client["bubble"]
+ 
+bubble_things = [
+    'agenda',
+    'box',
+    'categoria',
+    'compra',
+    'endereços',
+    'grammo_final',
+    'pedido',
+    'produto',
+    'ponto',
+    'pedidobox',
+    'produto',
+    'mov_moedas',
+    'user'
+]
+
+### UPDATE ALL THE BUBBLE DB
+for thing in bubble_things: update_mongo(db, thing)
+copy_bubble_all()
+
+### UPDATE THE MONGO UPDATED TIME FILE
+coll_list = ['compras','usr']
+mongo_updated_times(coll_list)
+
+### UPDATE THE MP STATUS BASED ON THE LAST UPDATE TIME SAVE IN THE RESPECTIVE FILE
+with open('/home/rafael/grammo/grammo/mp_lastupdate', 'r+') as f:
+    lastupdate = datetime.fromisoformat(f.read())
+    update_mp_status(lastupdate)
+    f.seek(0)
+    f.write(datetime.now().isoformat())
+    f.close
