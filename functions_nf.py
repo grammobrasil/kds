@@ -142,7 +142,7 @@ def NF_grammo(dados_compra, dados_cliente=False):
     token = '1'
 
     # csc de homologação
-    csc = 'A9FA6834-7F13-40BC-9C8F-5CA3615FAA7C'
+    csc = Config.CSC_homologacao
 
     # gera e adiciona o qrcode no xml NT2015/003
     xml_com_qrcode = SerializacaoQrcode().gerar_qrcode(token, csc, xml)

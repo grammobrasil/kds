@@ -86,7 +86,7 @@ def read_mp_compra(data):
     }
 
     headers = {
-        'Authorization': 'Bearer APP_USR-4016354548173801-071519-13c6571d089371a2cff6d938331a2473-740900544'
+        'Authorization': Config.MP_API_KEY
     }
 
     response = requests.request("GET", url, headers=headers, params=payload)
