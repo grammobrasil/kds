@@ -1,5 +1,5 @@
-# from kds.functions_internal import *
-from kds.functions_bubble import get_compra_by_num, compra_lookup
+from kds.functions_bubble import get_compra_by_num
+from kds.functions_internal import compra_lookup
 from kds.config import Config
 
 import pymongo
