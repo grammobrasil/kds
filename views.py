@@ -1,27 +1,21 @@
 # import the main modules
-import os
-import json
-import pytz
+from datetime import datetime, timedelta
 import time
 import pymongo
 import pandas as pd
 
 # import the modules libraries / functions / classes
-from flask import Flask, jsonify, request, render_template, flash, redirect, url_for, Response, stream_with_context
-from flask_login import LoginManager, current_user, login_user, logout_user, login_required
+from flask import request, render_template, flash, redirect, url_for, Response, stream_with_context # noqa
+from flask_login import LoginManager, current_user, login_user, logout_user, login_required # noqa
 from flask_bootstrap import Bootstrap
 from flask_datepicker import datepicker
 from bson.json_util import dumps
-from bson.objectid import ObjectId
-from json2html import *
-from datetime import datetime, timedelta
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash
 from werkzeug.urls import url_parse
-from pytz import timezone
 
 # import the grammo apps / libraries / functions / classes
 from kds import app
-from config import Config
+from kds.config import Config
 from kds.forms import LoginForm
 from kds.api.api import api_page
 import kds.heatmap
@@ -58,11 +52,11 @@ last24h = datetime.now() - timedelta(hours=24)
 end_date = datetime.now()
 tomorrow24h = datetime.now() + timedelta(hours=24)
 range_date = {
-#    'start': start_date.strftime("%d/%m/%Y"), 
-#    'end': end_date.strftime("%d/%m/%Y"),
-#    'last24h': last24h.strftime("%d/%m/%Y"),
-#    'now': datetime.now().strftime("%d/%m/%Y"),
-#    'tomorrow24h': tomorrow24h.strftime("%d/%m/%Y"),
+    #    'start': start_date.strftime("%d/%m/%Y"),
+    #    'end': end_date.strftime("%d/%m/%Y"),
+    #    'last24h': last24h.strftime("%d/%m/%Y"),
+    #    'now': datetime.now().strftime("%d/%m/%Y"),
+    #    'tomorrow24h': tomorrow24h.strftime("%d/%m/%Y"),
     'now': datetime.now().isoformat(),
     'tomorrow24h': tomorrow24h.isoformat(),
     'last24h': last24h.isoformat(),
@@ -72,12 +66,14 @@ range_date = {
 
 ##############################
 
+
 @app.route("/")
 @login_required
 def index():
     return render_template("home.html", range_date=range_date)
 
 ##############################
+
 
 @app.route("/heatmap_grammo")
 @login_required
@@ -88,42 +84,67 @@ def heatmap_grammo():
 
 ##############################
 
-@app.route("/vendas_produtos", methods=['POST','GET'])
+
+@app.route("/vendas_produtos", methods=['POST', 'GET'])
 @login_required
 def vendas_produtos():
 
-    mongo_filtered = kds.functions_view.function_mongo_filtered(client.bubble.pedidobox, request.args.get('start'), request.args.get('end'))
+    mongo_filtered = kds.functions_view.function_mongo_filtered(
+        client.bubble.pedidobox,
+        request.args.get('start'),
+        request.args.get('end')
+        )
 
     df_pedidosbox_filtered = pd.DataFrame(list(mongo_filtered))
-    
-    lista_geral = kds.functions_view.function_lista_pedidos_por_prod(df_pedidosbox_filtered, nutrientes)
-    pd_content = kds.functions_view.function_soma_pedidos_por_produto(lista_geral,df_produtos,nutrientes)
 
-    table = pd_content[["Nome", "g"]].sort_values(by=['g'],ascending=False)
-    return render_template('pd_content.html',  tables=[table.to_html(justify="justify-all", classes=["table-bordered", "table-striped", "table-hover"])], titles=table.columns.values)
+    lista_geral = kds.functions_view.function_lista_pedidos_por_prod(
+        df_pedidosbox_filtered,
+        nutrientes
+        )
+    pd_content = kds.functions_view.function_soma_pedidos_por_produto(
+        lista_geral,
+        df_produtos,
+        nutrientes
+        )
+
+    table = pd_content[["Nome", "g"]].sort_values(by=['g'], ascending=False)
+    return render_template(
+        'pd_content.html',
+        tables=[
+            table.to_html(
+                justify="justify-all",
+                classes=["table-bordered", "table-striped", "table-hover"]
+                )], titles=table.columns.values
+        )
+
+##############################
 
 
 @app.route("/lista_clientes")
 @login_required
 def lista_clientes():
-    mongo_filtered = kds.functions_view.function_mongo_filtered(client.bubble.user, request.args.get('start'), request.args.get('end'))
+    mongo_filtered = kds.functions_view.function_mongo_filtered(
+        client.bubble.user,
+        request.args.get('start'),
+        request.args.get('end')
+        )
     return render_template('lista_clientes.html', clientes=mongo_filtered)
 
 ##############################
+
 
 @app.route("/vendas_por_cliente")
 @login_required
 def vendas_por_cliente():
     cliente_id = request.args.get('cliente')
-    cliente = db["user"].find_one({"_id":cliente_id})
+    cliente = db["user"].find_one({"_id": cliente_id})
     nome_cliente = cliente["nome"]
-    
-    
-    status_pedidosbox = df_pedidosbox["status"].unique()
-    status_pedidosbox_ok = status_pedidosbox[[0,1,3,4,]]
 
-    # list all products 
-    lista_geral = kds.functions_view.function_lista_pedidos_por_prod(df_pedidosbox, nutrientes)
+    # list all products
+    lista_geral = kds.functions_view.function_lista_pedidos_por_prod(
+        df_pedidosbox,
+        nutrientes
+        )
 
     # filter by status ok
     lista_geral_ok = lista_geral.query('status in @status_pedidosbox_ok')
@@ -132,32 +153,48 @@ def vendas_por_cliente():
     lista_cliente = lista_geral_ok.query('Cliente == @cliente_id')
 
     # sum all 'produtos' by 'cliente'
-    soma_pedidos_por_produto = kds.functions_view.function_soma_pedidos_por_produto(lista_cliente,df_produtos,nutrientes)
+    soma_pedidos_por_produto = kds.functions_view.function_soma_pedidos_por_produto( # noqa
+        lista_cliente,
+        df_produtos,
+        nutrientes
+        )
 
     # order by 'g''
-    lista_resumida = soma_pedidos_por_produto[['Nome','g']].sort_values(by=['g'],ascending=False)
+    lista_resumida = soma_pedidos_por_produto[['Nome', 'g']].sort_values(
+        by=['g'],
+        ascending=False
+        )
 
-    return render_template('pd_content.html',  tables=[lista_resumida.to_html(justify="justify-all", classes=["table-bordered", "table-striped", "table-hover"])], titles=lista_resumida.columns.values, nome_cliente=nome_cliente, titulo="Total de vendas por produto")
-
+    return render_template(
+        'pd_content.html',
+        tables=[
+            lista_resumida.to_html(
+                justify="justify-all",
+                classes=["table-bordered", "table-striped", "table-hover"])],
+        titles=lista_resumida.columns.values,
+        nome_cliente=nome_cliente,
+        titulo="Total de vendas por produto"
+        )
 
 ##############################
 
-@app.route("/compra_detalhe", methods=['POST','GET'])
+
+@app.route("/compra_detalhe", methods=['POST', 'GET'])
 @login_required
 def compra_detalhe():
-    
+
     compra_num = int(request.args.get('compra_num'))
     # get the compra_num from Bubble if is under 10000
     bubble_id = client.grammo.compra_num.find_one({'num': compra_num})["_id"]
-    
+
     # grab 'detalhes' to format the compra info
     pedidos = kds.functions_internal.compra_lookup(bubble_id)
     pedidos[0]['compra_num'] = compra_num
-    
+
     return render_template('compra_detalhe.html', pedidos=pedidos)
 
-
 ##############################
+
 
 class User:
     def __init__(self, username):
@@ -195,8 +232,12 @@ class User:
             return redirect(url_for('index'))
         form = LoginForm()
         if form.validate_on_submit():
-            user = client.grammo.users.find_one({"username": form.username.data})
-            if user and User.check_password(user["password"], form.password.data):
+            user = client.grammo.users.find_one(
+                {"username": form.username.data}
+                )
+            if user and User.check_password(
+                    user["password"], form.password.data
+                    ):
                 user_obj = User(username=user["username"])
                 login_user(user_obj)
                 flash("Login bem sucedido!")
@@ -208,69 +249,73 @@ class User:
                 flash("Usuário ou senha inválidos")
         return render_template('login.html', title='Sign In', form=form)
 
-
     @app.route('/logout')
     def logout():
         logout_user()
         return redirect(url_for('index'))
 
-
 ##############################
 
-@app.route("/realtime_compras", methods=['POST','GET'])
-@login_required
 
+@app.route("/realtime_compras", methods=['POST', 'GET'])
+@login_required
 def realtime_compras():
 
-    ## If POST for "compras", save the inputs
+    # If POST for "compras", save the inputs
     if request.method == "POST" and request.form.get('dest') == 'compras':
 
         # Get the args from the POST
         compra_num = request.form.get('num')
         compra_class = request.form.get('class')
         compra_value = request.form.get('value')
-        bubble_id = client.grammo.compra_num.find_one({'num': int(compra_num)})['_id']
+        bubble_id = client.grammo.compra_num.find_one(
+            {'num': int(compra_num)}
+            )['_id']
 
         # Update the MongoDB
         client.grammo.compras.update_one(
-                {'bubble._id': bubble_id},
-                {"$set": 
-                    {
+            {'bubble._id': bubble_id},
+            {
+                "$set":
+                {
                     'dados.pgto.'+compra_class: compra_value
-                    }
                 }
-                , upsert=False)        
+            },
+            upsert=False)
 
         return Response(status=200)
 
-    ## If POST for "NF", save the inputs
+    # If POST for "NF", save the inputs
     if (request.method == "POST" and request.form.get('dest') == 'NF'):
         try:
-            nf_num = kds.functions_nf.NF_send(int(request.form.get('compra_num')))
+            nf_num = kds.functions_nf.NF_send(
+                int(request.form.get('compra_num'))
+                )
         except Exception as e:
             print(f"[!] Exception caught: {e}")
 
         return Response(str(nf_num), status=200)
-        
-    ## else show the realtime page
+
+    # else show the realtime page
     else:
         return render_template("realtime_compras.html")
 
 ##############################
 
+
 @app.route("/listen", methods=['GET'])
 @login_required
 def listen():
     def respond_to_client():
-    
+
         coll = request.args.get('coll')
         start = request.args.get('start')
         end = request.args.get('end')
-        
+
         realtime_stamp = ''
 
         while True:
-            last_mongo_date_stamp = kds.functions_internal.mongo_updated_time(coll)
+            last_mongo_date_stamp = kds.functions_internal.mongo_updated_time(coll) # noqa
 
             if (last_mongo_date_stamp != realtime_stamp):
 
@@ -282,11 +327,14 @@ def listen():
             realtime_stamp = last_mongo_date_stamp
             time.sleep(15)
 
-    return app.response_class(stream_with_context(respond_to_client()), mimetype='text/event-stream')
-
+    return app.response_class(
+        stream_with_context(respond_to_client()),
+        mimetype='text/event-stream'
+        )
 
 
 ##############################
+
 
 @app.route("/insta_er")
 @login_required

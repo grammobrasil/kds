@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from bson import Code
 
+
 # function to get the keys from a mongodb collection
 def get_keys(db, collection):
     client = MongoClient()

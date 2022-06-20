@@ -1,26 +1,26 @@
-import shutil, urllib, pymongo, requests, json
-from datetime import datetime, timedelta
-from pytz import timezone
+import pymongo
 from bson.json_util import dumps
-from bson.objectid import ObjectId
-import pandas as pd
+from instaloader import Instaloader, Profile
+from kds.config import Config
 
-from config import Config
 client = pymongo.MongoClient(Config.atlas_access)
+
 
 def compra_lookup(bubble_id):
     out = client.grammo.compras.aggregate([
-        {'$match': {
-            'bubble._id': bubble_id
+        {
+            '$match':
+            {
+                'bubble._id': bubble_id
             },
         },
         {
             "$lookup":
             {
-            "from": "usr",
-            "localField": "dados.usr",
-            "foreignField": "_id",
-            "as": "usr"
+                "from": "usr",
+                "localField": "dados.usr",
+                "foreignField": "_id",
+                "as": "usr"
             },
         },
         {
@@ -29,7 +29,7 @@ def compra_lookup(bubble_id):
         {
           '$lookup': {
             'from': 'usr',
-            'let': { 'endereço_id': '$pedidos.endereço._id'},
+            'let': {'endereço_id': '$pedidos.endereço._id'},
             'pipeline': [
 
                 {
@@ -39,15 +39,15 @@ def compra_lookup(bubble_id):
                 {
                     '$match':
                         {
-                        '$expr': 
-                           { 
-                               '$eq': [ '$$endereço_id', '$endereços._id']
-                           }
+                            '$expr':
+                            {
+                               '$eq': ['$$endereço_id', '$endereços._id']
+                            }
                         }
                     }
               ],
-              'as': 'pedidos.end'
-              }
+            'as': 'pedidos.end'
+            }
         },
         {
             '$unwind': '$pedidos.itens'
@@ -58,19 +58,23 @@ def compra_lookup(bubble_id):
         {
             "$lookup":
             {
-            "from": "produtos",
-            "localField": "pedidos.itens.conteúdo.produto",
-            "foreignField": "_id",
-            "as": "produto_info"
+                "from": "produtos",
+                "localField": "pedidos.itens.conteúdo.produto",
+                "foreignField": "_id",
+                "as": "produto_info"
             },
-        },    
+        },
 
         {
             '$addFields': {
                 'conteúdo': {
                     '$map': {
                         'input': "$produto_info",
-                        'in': { '$mergeObjects': ["$$this", '$pedidos.itens.conteúdo'] },
+                        'in': {
+                            '$mergeObjects': [
+                                "$$this",
+                                '$pedidos.itens.conteúdo'
+                            ]},
                     },
                 },
             },
@@ -78,7 +82,7 @@ def compra_lookup(bubble_id):
         {
             "$group":
             {
-                 "_id": { 
+                "_id": {
                     "pedido": "$pedidos.num",
                     "item": "$pedidos.itens.num",
                 },
@@ -101,7 +105,7 @@ def compra_lookup(bubble_id):
                     "$first": '$pedidos.bubble',
                 },
                 'entrega_hora': {
-                     "$first": '$pedidos.entrega_hora' 
+                     "$first": '$pedidos.entrega_hora'
                 },
             }
         },
@@ -109,9 +113,9 @@ def compra_lookup(bubble_id):
             "$group":
             {
                 "_id": "$_id.pedido",
-                "conteúdo_pedido": 
+                "conteúdo_pedido":
                 {
-                    "$addToSet": '$$ROOT' 
+                    "$addToSet": '$$ROOT'
                 },
             }
         },
@@ -125,24 +129,23 @@ def compra_lookup(bubble_id):
         {
             "$project":
                 {
-                    "conteúdo_pedido.usr.endereços" : 0
+                    "conteúdo_pedido.usr.endereços": 0
                 },
         }
-        
+
     ])
     return list(out)
 
 
-
 def mongo_updated_times(coll_list):
-    
+
     updated_time_dic = {}
     for item in coll_list:
         pipe = [
             {
                 '$addFields': {
                     "mongotime": {
-                        "$toDate":"$_id" 
+                        "$toDate": "$_id"
                     }
                 }
             },
@@ -152,12 +155,11 @@ def mongo_updated_times(coll_list):
             },
             {
                 "$limit": 1
-            },    
+            },
         ]
 
         db = client.grammo[item]
         lastdoc = list(db.aggregate(pipe))
-        updated_time = lastdoc[0]['mongotime']
         doc_time = lastdoc[0]['mongotime']
         updated_time_dic.update({item: doc_time.isoformat()})
 
@@ -167,15 +169,17 @@ def mongo_updated_times(coll_list):
         try:
             json_data = dumps(updated_time_dic)
             file.write(json_data)
-        except Exception as e: print(e)
+        except Exception as e:
+            print(e)
+
 
 def mongo_updated_time(coll):
-    
+
     pipe = [
         {
             '$addFields': {
                 "mongotime": {
-                    "$toDate":"$_id" 
+                    "$toDate": "$_id"
                 }
             }
         },
@@ -185,23 +189,20 @@ def mongo_updated_time(coll):
         },
         {
             "$limit": 1
-        },    
+        },
     ]
 
     db = client.grammo[coll]
     lastdoc = list(db.aggregate(pipe))
-    updated_time = lastdoc[0]['mongotime']
-    return lastdoc[0]['mongotime']        
+    return lastdoc[0]['mongotime']
+
 
 def insta_engagement_rate(target_profile):
-    from instaloader import Instaloader, Profile
     loader = Instaloader()
     loader.load_session_from_file('grammobrasil')
 
-
     profile = Profile.from_username(loader.context, target_profile)
     data = {}
-    
 
     num_followers = profile.followers
     total_num_likes = 0
@@ -218,7 +219,23 @@ def insta_engagement_rate(target_profile):
     data['total_num_comments'] = total_num_comments
     data['total_num_posts'] = total_num_posts
 
-    engagement = float(total_num_likes + (total_num_comments * 1.5)) / (num_followers * total_num_posts)
+    engagement = float(
+        total_num_likes + (total_num_comments * 1.5)
+        ) / (num_followers * total_num_posts)
     data['engagement'] = engagement * 100
 
     return data
+
+
+def NF_insert_one(_id, chave, compra_num, nf_num, valor_total):
+    client.grammo.nf.insert_one(
+        {
+            '_id': _id,  # int
+            'chave': chave,  # str
+            'compra_num': compra_num,  # int
+            'dados_compra': {
+                'nf_num': nf_num,  # int
+                'valor_total': valor_total  # int
+                },
+        }
+    )

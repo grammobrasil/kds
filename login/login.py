@@ -7,5 +7,4 @@ api_page = Blueprint('api_page', __name__,
 
 client = pymongo.MongoClient()
 
-@api_page.route('/add', methods=['POST'])
-
+@api_page.route('/add', methods=['POST'] )

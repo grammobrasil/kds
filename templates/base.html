@@ -36,11 +36,10 @@
 
     {% block navbar %}
     <div class="container">
-        <button onclick='window.location.href="{{ url_for('logout') }}";')><u><b>LOGOUT</b></u></button>        
-        <button onclick=$("#main_block").load("{{ url_for('realtime_compras') }}")>Compras tempo real</button>
-        <button onclick=$("#main_block").load("{{ url_for('vendas_produtos') }}")>Total vendas por produtos</button>
-        <button onclick=$("#main_block").load("{{ url_for('lista_clientes') }}")>Lista de clientes</button>            
-        <button onclick=$("#main_block").load("{{ url_for('heatmap_grammo') }}")>Mapa de calor endereços</button>
+        <button onclick=$(#main_block).load("{{ url_for('realtime_compras') }}")>Compras tempo real</button>
+        <button onclick=$(#main_block).load("{{ url_for('vendas_produtos') }}")>Total vendas por produtos</button>
+        <button onclick=$(#main_block).load("{{ url_for('lista_clientes') }}")>Lista de clientes</button>            
+        <button onclick=$(#main_block).load("{{ url_for('heatmap_grammo') }}")>Mapa de calor endereços</button>
         
     </div>
     {% endblock navbar %}
