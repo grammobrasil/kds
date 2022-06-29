@@ -1,30 +1,31 @@
 # import the main modules
-from datetime import datetime, timedelta
 import time
-import pymongo
-import pandas as pd
+from datetime import datetime, timedelta
 
+import pymongo
+from bson.json_util import dumps
 # import the modules libraries / functions / classes
-from flask import request, render_template, flash, redirect, url_for, Response, stream_with_context # noqa
-from flask_login import LoginManager, current_user, login_user, logout_user, login_required # noqa
+from flask import (Response, flash, redirect, render_template, request,  # noqa
+                   stream_with_context, url_for)
 from flask_bootstrap import Bootstrap
 from flask_datepicker import datepicker
-from bson.json_util import dumps
+from flask_login import (LoginManager, current_user, login_required,  # noqa
+                         login_user, logout_user)
 from werkzeug.security import check_password_hash
 from werkzeug.urls import url_parse
 
-# import the grammo apps / libraries / functions / classes
-from kds import app
-from kds.config import Config
-from kds.forms import LoginForm
-from kds.api.api import api_page
-import kds.heatmap
-import kds.functions_view
 import kds.functions_bubble
-import kds.functions_internal
 import kds.functions_external
+import kds.functions_internal
 import kds.functions_mp
 import kds.functions_nf
+import kds.functions_view
+import kds.heatmap
+# import the grammo apps / libraries / functions / classes
+from kds import app
+from kds.api.api import api_page
+from kds.config import Config
+from kds.forms import LoginForm
 
 # configure the app com resources
 app.config.from_object(Config)
@@ -34,16 +35,15 @@ datepicker(app)
 
 # set the database
 client = pymongo.MongoClient(Config.atlas_access)
-db = client["bubble"]
+# db = client["bubble"]
 
 # Call the login manager
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+tmp = list(client.grammo.nf.find())
+
 # convert in Pandas DF the Mongo Collections
-df_pedidosbox = pd.DataFrame(list(db["pedidobox"].find()))
-df_pedidos = pd.DataFrame(list(db["pedido"].find()))
-df_produtos = pd.DataFrame(list(db["produto"].find()))
 nutrientes = ['Carbo', 'Grão', 'Legumes', 'Proteina']
 
 # set range date (default 1 week before -- today)
@@ -75,47 +75,24 @@ def index():
 ##############################
 
 
-@app.route("/heatmap_grammo")
+@app.route("/dev")
 @login_required
-def heatmap_grammo():
-    data = db["endereços"].find()
-    map = kds.heatmap.heatmap(data)
-    return map
+def dev():
+    out = []
+    for doc in client.grammo.nutr_TACO.find():
+        out.append(doc['nome_tec'])
+    lista = list(out)
+    return render_template("dev.html", lista=lista)
 
 ##############################
 
 
-@app.route("/vendas_produtos", methods=['POST', 'GET'])
+@app.route("/heatmap_grammo")
 @login_required
-def vendas_produtos():
-
-    mongo_filtered = kds.functions_view.function_mongo_filtered(
-        client.bubble.pedidobox,
-        request.args.get('start'),
-        request.args.get('end')
-        )
-
-    df_pedidosbox_filtered = pd.DataFrame(list(mongo_filtered))
-
-    lista_geral = kds.functions_view.function_lista_pedidos_por_prod(
-        df_pedidosbox_filtered,
-        nutrientes
-        )
-    pd_content = kds.functions_view.function_soma_pedidos_por_produto(
-        lista_geral,
-        df_produtos,
-        nutrientes
-        )
-
-    table = pd_content[["Nome", "g"]].sort_values(by=['g'], ascending=False)
-    return render_template(
-        'pd_content.html',
-        tables=[
-            table.to_html(
-                justify="justify-all",
-                classes=["table-bordered", "table-striped", "table-hover"]
-                )], titles=table.columns.values
-        )
+def heatmap_grammo():
+    data = client.bubble.endereços.find()
+    map = kds.heatmap.heatmap(data)
+    return map
 
 ##############################
 
@@ -129,52 +106,6 @@ def lista_clientes():
         request.args.get('end')
         )
     return render_template('lista_clientes.html', clientes=mongo_filtered)
-
-##############################
-
-
-@app.route("/vendas_por_cliente")
-@login_required
-def vendas_por_cliente():
-    cliente_id = request.args.get('cliente')
-    cliente = db["user"].find_one({"_id": cliente_id})
-    nome_cliente = cliente["nome"]
-
-    # list all products
-    lista_geral = kds.functions_view.function_lista_pedidos_por_prod(
-        df_pedidosbox,
-        nutrientes
-        )
-
-    # filter by status ok
-    lista_geral_ok = lista_geral.query('status in @status_pedidosbox_ok')
-
-    # filter by client
-    lista_cliente = lista_geral_ok.query('Cliente == @cliente_id')
-
-    # sum all 'produtos' by 'cliente'
-    soma_pedidos_por_produto = kds.functions_view.function_soma_pedidos_por_produto( # noqa
-        lista_cliente,
-        df_produtos,
-        nutrientes
-        )
-
-    # order by 'g''
-    lista_resumida = soma_pedidos_por_produto[['Nome', 'g']].sort_values(
-        by=['g'],
-        ascending=False
-        )
-
-    return render_template(
-        'pd_content.html',
-        tables=[
-            lista_resumida.to_html(
-                justify="justify-all",
-                classes=["table-bordered", "table-striped", "table-hover"])],
-        titles=lista_resumida.columns.values,
-        nome_cliente=nome_cliente,
-        titulo="Total de vendas por produto"
-        )
 
 ##############################
 

@@ -258,3 +258,17 @@ def NF_send(compra_num, cliente=False):
             },
         )
         return(nf_num)
+
+
+def NF_insert_one(_id, chave, compra_num, nf_num, valor_total):
+    client.grammo.nf.insert_one(
+        {
+            '_id': _id,  # int
+            'chave': chave,  # str
+            'compra_num': compra_num,  # int
+            'dados_compra': {
+                'nf_num': nf_num,  # int
+                'valor_total': valor_total  # int
+                },
+        }
+    )
