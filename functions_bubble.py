@@ -29,24 +29,25 @@ def read_bubble(thing, constraints):
     remaining = 100
 
     while remaining > 0:
-        # data we send with the search. Search constraints would be here
+        #data we send with the search. Search constraints would be here
         params = {
+            'cursor': cursor,
+            'api_token': API_KEY,
             'constraints': json.dumps(constraints),
             'sort_field': 'Modified Date',
             'descending': 'true',
-            'cursor': cursor,
-            'api_token': API_KEY
-        }
-
+            }
         url = base_url + '?' + urllib.parse.urlencode(params)
         response = session.get(url)
 
         if response.status_code != 200:
-            print('Error with status code {}'.format(response.status_code))
-            exit()
+            raise ValueError('Error with status code {}, id = {}'.format(response.status_code, _id))
 
         chunk = response.json()['response']
-        remaining = chunk['remaining']
+        if 'remaining' in chunk:
+            remaining = chunk['remaining']
+        else:
+            remaining = 0
         count = chunk['count']
         results = chunk['results']
         dict_pedidoboxput += results
@@ -72,9 +73,8 @@ def read_bubble_id(thing, _id):
     response = session.get(url)
 
     if response.status_code != 200:
-        print(_id)
-        print('Error with status code {}'.format(response.status_code))
-        exit()
+        raise ValueError('Error with status code {}, id = {}'.format(response.status_code, _id))
+        return None
 
     return response.json()['response']
 
@@ -124,6 +124,9 @@ def get_db_lastdate(col):
                     "Modified Date": 1,
                     "convertedDate": 1
                 },
+        },
+        {
+            "$limit": 1,
         }
     ]
 
@@ -169,7 +172,14 @@ def set_compra_numero():
 
 def get_date_grammo(col):
     # pipe the grammo col to get last modified date
-    pipe_grammo = [{"$sort": {"bubble.modified_date": -1}}]
+    pipe_grammo = [
+        {
+            "$sort": {"bubble.modified_date": -1}
+        },
+        {
+            "$limit": 1
+        }
+    ]
     date_grammo = list(
         client.grammo[col].aggregate(pipe_grammo)
         )[0]["bubble"]["modified_date"]
@@ -202,7 +212,63 @@ def copy_bubble_endereços(bubble_id):
         upsert=True)
 
 
-def copy_bubble_usr(last_date):
+def copy_bubble_usr_unique(doc):
+
+    # check if fields exists, set empty if not
+    DDD = doc['DDD'] if 'DDD' in doc else ''
+    phone = doc['FONE'] if 'FONE' in doc else ''
+    CPF = doc['CPF'] if 'CPF' in doc else ''
+    DN = doc['DATA DE NASCIMENTO'] if 'DATA DE NASCIMENTO' in doc else ''
+
+    # update 'bio', 'bubble' and 'contato'
+    try:
+        client.grammo.usr.update_one(
+            {'bubble._id': doc["_id"]},
+            {
+                "$set":
+                {
+                    'bubble':
+                        {
+                            '_id': doc['_id'],
+                            'created_date': doc['Created Date'],
+                            'modified_date': doc['Modified Date'],
+                        },
+                    'bio':
+                        {
+                            'nome': doc['nome'],
+                            'apelido': doc['apelido'],
+                            'DN': DN,
+                            'CPF': CPF,
+                        },
+                    'contato':
+                        {
+                            'DDD': DDD,
+                            'fone': phone,
+                            'email': doc['authentication']['email']['email'],
+                        },
+                }
+            },
+            upsert=True)
+
+        # uddate 'usr' - 'endereços'
+        copy_bubble_endereços(doc["_id"])
+        
+        return "'Usr' successfully updated!"
+    
+    except Exception() as e:
+        return e
+
+
+def copy_bubble_usr_date(last_date):
+
+    # pipe bubble with last results
+    pipe_bubble = [{"$match": {"Created Date": {"$gt": last_date}}}]
+
+    for doc in client.bubble.user.aggregate(pipe_bubble):
+        copy_bubble_usr_unique(doc)
+
+
+def copy_bubble_usr_old(last_date):
 
     # pipe bubble with last results
     pipe_bubble = [{"$match": {"Created Date": {"$gt": last_date}}}]
@@ -210,24 +276,10 @@ def copy_bubble_usr(last_date):
     for doc in client.bubble.user.aggregate(pipe_bubble):
 
         # check if fields exists, set empty if not
-        try:
-            DDD = doc['DDD']
-        except Exception:
-            DDD = ''
-        try:
-            phone = doc['FONE']
-        except Exception:
-            phone = ''
-
-        try:
-            CPF = doc['CPF']
-        except Exception:
-            CPF = ''
-
-        try:
-            DN = doc['DATA DE NASCIMENTO']
-        except Exception:
-            DN = ''
+        DDD = doc['DDD'] if 'DDD' in doc else ''
+        phone = doc['FONE'] if 'FONE' in doc else ''
+        CPF = doc['CPF'] if 'CPF' in doc else ''
+        DN = doc['DATA DE NASCIMENTO'] if 'DATA DE NASCIMENTO' in doc else ''
 
         # update 'bio', 'bubble' and 'contato'
         client.grammo.usr.update_one(
@@ -365,365 +417,313 @@ def set_compra_numero_all():
             })
 
 
+def copy_bubble_compras_unique(compra):
+
+    try:
+        usr = client.grammo.usr.find_one(
+            {'bubble._id': compra['comprador']}
+            )["_id"]
+    except TypeError:
+        usr = ''
+
+    dict_compra_bubble = {}
+
+    dict_compra_bubble.update({'_id': compra['_id']})
+    dict_compra_bubble.update({'created_date': compra['Created Date']})
+    dict_compra_bubble.update({'modified_date': compra['Modified Date']})
+
+    # check if multiple fields exists, set empty if not
+    bubble_fields = [
+        'pedidos',
+        'compra num',
+        'comprador',
+        'valor total',
+        'cobrar',
+        'forma',
+        'cupom',
+        'cancelado',
+        'liberado',
+        'pago',
+        'status',
+        'validado',
+    ]
+
+    for field in bubble_fields:
+        if field in compra:
+            dict_compra_bubble.update(
+                {field: compra[field]}
+                ) if compra[field] != 0 else None
+
+    if "pedidos" in compra:
+        # create a list of 'pedidos'
+        list_pedido = []
+
+        for index, value in enumerate(sorted(compra["pedidos"])):
+            # set the 'pedido' number
+            pedido_numero = index+1
+
+            # search in bubble for the specific 'pedido'
+            pedido_body = client.bubble.pedido.find_one({"_id": value})
+            if pedido_body:
+                pass
+            else:
+                # test if the 'pedido' exists in bubble, else exit loop
+                try:
+                    pedido_body = read_bubble_id('pedido', value)
+                except (ValueError):
+                    break
+
+            # create a dict of the 'pedidos' with bubble content
+            dict_pedido_bubble = {}
+
+            dict_pedido_bubble.update({'_id': pedido_body['_id']})
+            dict_pedido_bubble.update(
+                {'created_date': pedido_body['Created Date']}
+                )
+            dict_pedido_bubble.update({
+                'modified_date': pedido_body['Modified Date']}
+                )
+
+            if 'pedidos box' in pedido_body:
+                dict_pedido_bubble.update(
+                    {'pedidos_box': pedido_body['pedidos box']}
+                    ) if pedido_body['pedidos box'] != 0 else None
+            
+            if 'km' in pedido_body:
+                dict_pedido_bubble.update(
+                    {'km': pedido_body['km']}
+                ) if pedido_body['km'] != 0 else None
+
+            if 'valor entrega' in pedido_body:
+                dict_pedido_bubble.update(
+                    {'valor_entrega': pedido_body['valor entrega']}
+                    ) if pedido_body['valor entrega'] != 0 else None
+
+            # create a dict for the 'pedido' with the details from it
+            dict_pedido = {}
+
+            # Insert into pedidos the bubble dict
+            dict_pedido.update({'bubble': dict_pedido_bubble})
+
+            # set the number for the 'pedido'
+            dict_pedido.update({'num': pedido_numero})
+
+            # get the full datetime for schedulled 'pedido'
+            dict_pedido.update(
+                {'entrega_hora':
+                    get_datetime_from_pedido(pedido_body).isoformat()
+                }) if get_datetime_from_pedido(pedido_body) != 'PE' else None # noqa
+
+            try:
+                pedido_address = get_usr_address_from_bubble_geo(
+                    usr, pedido_body['endereço']['address']
+                    )
+            except KeyError:
+                pass
+            else:
+                dict_pedido.update(
+                    {'endereço': pedido_address}
+                    ) if pedido_body['endereço'] != 0 else None
+
+            # update itens from 'pedidosbox'
+            try:
+                pedidoxbox = client.bubble.pedido.find_one(
+                    {"_id": value}
+                    )['pedidos box']
+            except (KeyError, ValueError, TypeError):
+                pass
+            else:
+                list_itens = []
+                for boxindex, boxvalue in enumerate(sorted(pedidoxbox)):
+                    # set the 'pedido' number
+                    pedidobox_numero = boxindex+1
+
+                    # search in bubble for the specific 'pedidobox'
+                    pedidobox_body = client.bubble.pedidobox.find_one(
+                        {"_id": boxvalue}
+                        )
+                    if pedidobox_body:
+                        pass
+                    else:
+                        # test if the 'pedido' exists in bubble,
+                        # else exit loop
+                        try:
+                            pedidobox_body = read_bubble_id(
+                                'pedidobox', boxvalue
+                                )
+                        except Exception:
+                            break
+
+                    # create a dict of the 'pedidos' with bubble content
+                    dict_pedidobox_bubble = {}
+
+                    dict_pedidobox_bubble.update(
+                        {'_id': pedido_body['_id']}
+                        )
+                    dict_pedidobox_bubble.update({
+                        'created_date': pedido_body['Created Date']
+                        })
+                    dict_pedidobox_bubble.update({
+                        'modified_date': pedido_body['Modified Date']
+                        })
+
+                    try:
+                        pedidobox_body['valor box']
+                    except Exception():
+                        pass
+                    else:
+                        dict_pedidobox_bubble.update(
+                            {'valor_box': pedidobox_body['valor box']}
+                            )
+
+                    # create a dict of the 'item' conteúdo
+                    dict_pedidobox = {}
+
+                    # Insert into pedidosbpx the bubble dict
+                    dict_pedidobox.update(
+                        {'bubble': dict_pedidobox_bubble}
+                        )
+
+                    dict_pedidobox.update(
+                        {'num': pedidobox_numero}
+                        )
+
+                    # Create a list for the 'conteúdo'
+                    list_conteudo = []
+
+                    # insert into the list if present for each
+                    if 'Proteina' in pedidobox_body:
+                        if 'ponto 1' in pedidobox_body:
+                            pedidobox_body_pt = pedidobox_body['ponto 1']
+                        else:
+                            pedidobox_body_pt = ''
+
+                        proteina = client.grammo.produtos.find_one(
+                            {"bubble._id": pedidobox_body['Proteina']}
+                            )
+                        list_conteudo.append(
+                            {
+                                'produto': proteina["_id"],
+                                "qtd": pedidobox_body['Proteina Gr'],
+                                "ponto": pedidobox_body_pt
+                            }) if pedidobox_body[
+                                'Proteina Gr'
+                                ] != 0 else None
+
+                    if 'Carbo' in pedidobox_body:
+                        carbo = client.grammo.produtos.find_one(
+                            {"bubble._id": pedidobox_body['Carbo']}
+                            )
+                        list_conteudo.append(
+                            {
+                                'produto': carbo["_id"],
+                                "qtd": pedidobox_body['Carbo Gr']
+                            }
+                            ) if pedidobox_body['Carbo Gr'] != 0 else None
+
+                    if 'Grão' in pedidobox_body:
+                        grao = client.grammo.produtos.find_one(
+                            {"bubble._id": pedidobox_body['Grão']}
+                        )
+                        list_conteudo.append(
+                            {
+                                'produto': grao["_id"],
+                                "qtd": pedidobox_body['Grão Gr']
+                            }) if pedidobox_body['Grão Gr'] != 0 else None
+
+                    if 'Legumes' in pedidobox_body:
+                        legumes = client.grammo.produtos.find_one(
+                            {"bubble._id": pedidobox_body['Legumes']}
+                            )
+                        list_conteudo.append
+                        ({
+                            'produto': legumes["_id"],
+                            "qtd": pedidobox_body['Legumes Gr']
+                            }) if pedidobox_body[
+                                'Legumes Gr'
+                                ] != 0 else None
+
+                    if 'salada' in pedidobox_body:
+                        salada = client.grammo.produtos.find_one(
+                            {"bubble._id": pedidobox_body['salada']}
+                            )
+                        try:
+                            pedidobox_body['gr salada']
+                        except Exception():
+                            salada_gr = 0
+                        else:
+                            salada_gr = pedidobox_body['gr salada']
+                            list_conteudo.append({
+                                    'produto': salada["_id"],
+                                    "qtd": salada_gr
+                                })
+
+                    if 'bebidas' in pedidobox_body:
+                        bebida = client.grammo.produtos.find_one(
+                            {"bubble._id": pedidobox_body['bebidas']}
+                            )
+                        list_conteudo.append({
+                            'produto': bebida["_id"],
+                            "qtd": 1
+                            })
+
+                    if 'Azeite' in pedidobox_body:
+                        list_conteudo.append({
+                                'produto': "62047b931835f23c7dbf211d",
+                                "qtd": 1
+                            })
+
+                    if 'Vinagre' in pedidobox_body:
+                        list_conteudo.append({
+                                'produto': "62047bfd1835f23c7dbf2124",
+                                "qtd": 1
+                            })
+
+                    if 'talheres' in pedidobox_body:
+                        list_conteudo.append(
+                            {
+                                'produto': "62047c231835f23c7dbf2126",
+                                "qtd": 1}
+                            )
+
+                    # insert the contet of each 'conteúdo'
+                    # inside a list from the 'pedidobox' dict
+                    dict_pedidobox['conteúdo'] = list_conteudo
+
+                    # append to a list of itens
+                    list_itens.append(dict_pedidobox)
+
+                # inser the list of 'itens' of the 'pedido'
+                # to the dict 'itens' value
+                dict_pedido['itens'] = list_itens
+
+            # append the 'pedido' dict to a list of 'pedidos'
+            list_pedido.append(dict_pedido)
+
+        # update mongo
+        client.grammo.compras.update_one(
+                {'bubble._id': compra["_id"]},
+                {
+                    "$set":
+                    {
+                        'bubble': dict_compra_bubble,
+                        'dados': {'usr': usr},
+                        'pedidos': list_pedido,
+                    }
+                },
+                upsert=True)
+    
+    return "'Compra' successfully updated!"
+
+
 def copy_bubble_compras(last_date):
     # pipe bubble with last results
     pipe_bubble = [{"$match": {"Modified Date": {"$gt": last_date}}}]
 
     for compra in client.bubble.compra.aggregate(pipe_bubble):
         # set the id of the usr from grammo DB
-        try:
-            usr = client.grammo.usr.find_one(
-                {'bubble._id': compra['comprador']}
-                )["_id"]
-        except Exception():
-            usr = ''
-
-        dict_compra_bubble = {}
-
-        dict_compra_bubble.update({'_id': compra['_id']})
-        dict_compra_bubble.update({'created_date': compra['Created Date']})
-        dict_compra_bubble.update({'modified_date': compra['Modified Date']})
-
-        # check if multiple fields exists, set empty if not
-        bubble_fields = [
-            'pedidos',
-            'compra num',
-            'comprador',
-            'valor total',
-            'cobrar',
-            'forma',
-            'cupom',
-            'cancelado',
-            'liberado',
-            'pago',
-            'status',
-            'validado',
-        ]
-
-        for field in bubble_fields:
-            try:
-                compra[field]
-            except Exception():
-                pass
-            else:
-                dict_compra_bubble.update(
-                    {field: compra[field]}
-                    ) if compra[field] != 0 else None
-
-        try:
-            compra["pedidos"]
-        except Exception():
-            pass
-        else:
-            # create a list of 'pedidos'
-            list_pedido = []
-
-            for index, value in enumerate(sorted(compra["pedidos"])):
-                # set the 'pedido' number
-                pedido_numero = index+1
-
-                # search in bubble for the specific 'pedido'
-                pedido_body = client.bubble.pedido.find_one({"_id": value})
-                if pedido_body:
-                    pass
-                else:
-                    # test if the 'pedido' exists in bubble, else exit loop
-                    try:
-                        pedido_body = read_bubble_id('pedido', value)
-                    except Exception():
-                        break
-
-                # create a dict of the 'pedidos' with bubble content
-                dict_pedido_bubble = {}
-
-                dict_pedido_bubble.update({'_id': pedido_body['_id']})
-                dict_pedido_bubble.update(
-                    {'created_date': pedido_body['Created Date']}
-                    )
-                dict_pedido_bubble.update({
-                    'modified_date': pedido_body['Modified Date']}
-                    )
-
-                try:
-                    pedido_body['pedidos box']
-                except Exception():
-                    pass
-                else:
-                    dict_pedido_bubble.update(
-                        {'pedidos_box': pedido_body['pedidos box']}
-                        ) if pedido_body['pedidos box'] != 0 else None
-
-                try:
-                    pedido_body['km']
-                except Exception():
-                    pass
-                else:
-                    dict_pedido_bubble.update(
-                        {'km': pedido_body['km']}
-                    ) if pedido_body['km'] != 0 else None
-
-                try:
-                    pedido_body['valor entrega']
-                except Exception():
-                    pass
-                else:
-                    dict_pedido_bubble.update(
-                        {'valor_entrega': pedido_body['valor entrega']}
-                        ) if pedido_body['valor entrega'] != 0 else None
-
-                # create a dict for the 'pedido' with the details from it
-                dict_pedido = {}
-
-                # Insert into pedidos the bubble dict
-                dict_pedido.update({'bubble': dict_pedido_bubble})
-
-                # set the number for the 'pedido'
-                dict_pedido.update({'num': pedido_numero})
-
-                # get the full datetime for schedulled 'pedido'
-                dict_pedido.update(
-                    {'entrega_hora':
-                        get_datetime_from_pedido(pedido_body).isoformat()
-                    }) if get_datetime_from_pedido(pedido_body) != 'PE' else None # noqa
-
-                try:
-                    pedido_address = get_usr_address_from_bubble_geo(
-                        usr, pedido_body['endereço']['address']
-                        )
-                except Exception():
-                    pass
-                else:
-                    dict_pedido.update(
-                        {'endereço': pedido_address}
-                        ) if pedido_body['endereço'] != 0 else None
-
-                # update itens from 'pedidosbox'
-                try:
-                    pedidoxbox = client.bubble.pedido.find_one(
-                        {"_id": value}
-                        )['pedidos box']
-                except Exception():
-                    pass
-                else:
-                    list_itens = []
-                    for boxindex, boxvalue in enumerate(sorted(pedidoxbox)):
-                        # set the 'pedido' number
-                        pedidobox_numero = boxindex+1
-
-                        # search in bubble for the specific 'pedidobox'
-                        pedidobox_body = client.bubble.pedidobox.find_one(
-                            {"_id": boxvalue}
-                            )
-                        if pedidobox_body:
-                            pass
-                        else:
-                            # test if the 'pedido' exists in bubble,
-                            # else exit loop
-                            try:
-                                pedidobox_body = read_bubble_id(
-                                    'pedidobox', boxvalue
-                                    )
-                            except Exception:
-                                break
-
-                        # create a dict of the 'pedidos' with bubble content
-                        dict_pedidobox_bubble = {}
-
-                        dict_pedidobox_bubble.update(
-                            {'_id': pedido_body['_id']}
-                            )
-                        dict_pedidobox_bubble.update({
-                            'created_date': pedido_body['Created Date']
-                            })
-                        dict_pedidobox_bubble.update({
-                            'modified_date': pedido_body['Modified Date']
-                            })
-
-                        try:
-                            pedidobox_body['valor box']
-                        except Exception():
-                            pass
-                        else:
-                            dict_pedidobox_bubble.update(
-                                {'valor_box': pedidobox_body['valor box']}
-                                )
-
-                        # create a dict of the 'item' conteúdo
-                        dict_pedidobox = {}
-
-                        # Insert into pedidosbpx the bubble dict
-                        dict_pedidobox.update(
-                            {'bubble': dict_pedidobox_bubble}
-                            )
-
-                        dict_pedidobox.update(
-                            {'num': pedidobox_numero}
-                            )
-
-                        # Create a list for the 'conteúdo'
-                        list_conteudo = []
-
-                        # insert into the list if present for each
-                        try:
-                            pedidobox_body['Proteina']
-                        except Exception():
-                            pass
-                        else:
-                            try:
-                                pedidobox_body['ponto 1']
-                            except Exception():
-                                pedidobox_body_pt = ''
-                            else:
-                                pedidobox_body_pt = pedidobox_body['ponto 1']
-
-                            proteina = client.grammo.produtos.find_one(
-                                {"bubble._id": pedidobox_body['Proteina']}
-                                )
-                            list_conteudo.append(
-                                {
-                                    'produto': proteina["_id"],
-                                    "qtd": pedidobox_body['Proteina Gr'],
-                                    "ponto": pedidobox_body_pt
-                                }) if pedidobox_body[
-                                    'Proteina Gr'
-                                    ] != 0 else None
-
-                        try:
-                            pedidobox_body['Carbo']
-                        except Exception():
-                            pass
-                        else:
-                            carbo = client.grammo.produtos.find_one(
-                                {"bubble._id": pedidobox_body['Carbo']}
-                                )
-                            list_conteudo.append(
-                                {
-                                    'produto': carbo["_id"],
-                                    "qtd": pedidobox_body['Carbo Gr']
-                                }
-                                ) if pedidobox_body['Carbo Gr'] != 0 else None
-
-                        try:
-                            pedidobox_body['Grão']
-                        except Exception():
-                            pass
-                        else:
-                            grao = client.grammo.produtos.find_one
-                            (
-                                {"bubble._id": pedidobox_body['Grão']}
-                            )
-                            list_conteudo.append(
-                                {
-                                    'produto': grao["_id"],
-                                    "qtd": pedidobox_body['Grão Gr']
-                                }) if pedidobox_body['Grão Gr'] != 0 else None
-
-                        try:
-                            pedidobox_body['Legumes']
-                        except Exception():
-                            pass
-                        else:
-                            legumes = client.grammo.produtos.find_one(
-                                {"bubble._id": pedidobox_body['Legumes']}
-                                )
-                            list_conteudo.append
-                            ({
-                                'produto': legumes["_id"],
-                                "qtd": pedidobox_body['Legumes Gr']
-                                }) if pedidobox_body[
-                                    'Legumes Gr'
-                                    ] != 0 else None
-
-                        try:
-                            pedidobox_body['salada']
-                        except Exception():
-                            pass
-                        else:
-                            salada = client.grammo.produtos.find_one(
-                                {"bubble._id": pedidobox_body['salada']}
-                                )
-                            try:
-                                pedidobox_body['gr salada']
-                            except Exception():
-                                salada_gr = 0
-                            else:
-                                salada_gr = pedidobox_body['gr salada']
-                                list_conteudo.append({
-                                        'produto': salada["_id"],
-                                        "qtd": salada_gr
-                                    })
-
-                        try:
-                            pedidobox_body['bebidas']
-                        except Exception():
-                            pass
-                        else:
-                            bebida = client.grammo.produtos.find_one(
-                                {"bubble._id": pedidobox_body['bebidas']}
-                                )
-                            list_conteudo.append({
-                                'produto': bebida["_id"],
-                                "qtd": 1
-                                })
-
-                        try:
-                            pedidobox_body['Azeite']
-                        except Exception():
-                            pass
-                        else:
-                            list_conteudo.append({
-                                    'produto': "62047b931835f23c7dbf211d",
-                                    "qtd": 1
-                                })
-
-                        try:
-                            pedidobox_body['Vinagre']
-                        except Exception():
-                            pass
-                        else:
-                            list_conteudo.append({
-                                    'produto': "62047bfd1835f23c7dbf2124",
-                                    "qtd": 1
-                                })
-
-                        try:
-                            pedidobox_body['talheres']
-                        except Exception():
-                            talheres_value = '' # noqa
-                        else:
-                            list_conteudo.append(
-                                {
-                                    'produto': "62047c231835f23c7dbf2126",
-                                    "qtd": 1}
-                                )
-
-                        # insert the contet of each 'conteúdo'
-                        # inside a list from the 'pedidobox' dict
-                        dict_pedidobox['conteúdo'] = list_conteudo
-
-                        # append to a list of itens
-                        list_itens.append(dict_pedidobox)
-
-                    # inser the list of 'itens' of the 'pedido'
-                    # to the dict 'itens' value
-                    dict_pedido['itens'] = list_itens
-
-                # append the 'pedido' dict to a list of 'pedidos'
-                list_pedido.append(dict_pedido)
-
-            # update mongo
-            client.grammo.compras.update_one(
-                    {'bubble._id': compra["_id"]},
-                    {
-                        "$set":
-                        {
-                            'bubble': dict_compra_bubble,
-                            'dados': {'usr': usr},
-                            'pedidos': list_pedido,
-                        }
-                    },
-                    upsert=True)
-
+        copy_bubble_compras_unique(compra)
+    
     return "'Compras' successfully updated!"
 
 
@@ -751,12 +751,15 @@ def get_usr_address_from_bubble_geo(usr_obj_id, bubble_geo_add):
     # return the first ocurrence ([0]) in the given list,
     # assuming all the values will be the same
     end_out = {}
-    end_out['_id'] = list(
-        client.grammo.usr.aggregate(pipe)
-        )[0]['endereços']['_id']
-    end_out['bubble'] = list(
-        client.grammo.usr.aggregate(pipe)
-        )[0]['endereços']['bubble']
+    try:
+        end_out['_id'] = list(
+            client.grammo.usr.aggregate(pipe)
+            )[0]['endereços']['_id']
+        end_out['bubble'] = list(
+            client.grammo.usr.aggregate(pipe)
+            )[0]['endereços']['bubble']
+    except IndexError:
+        pass
 
     return end_out
 
@@ -767,17 +770,12 @@ def get_usr_address_from_bubble_geo(usr_obj_id, bubble_geo_add):
 
 def get_datetime_from_pedido(pedido):
     # test if 'entrega hora' exists, meaning that is a scheduled delivery
-    try:
-        pedido['entrega hora']
-    # if doesnt exist, it PE ('pronta entrega')
-    except Exception():
-        entrega_hora = 'PE'
-    else:
+    if 'entrega hora' in pedido:
         # test if 'entrega hora' its in date format,
         # meaning it's '50 minutes' from the created date, in other words an PE
         try:
             datetime.strptime(pedido['entrega hora'], '%b %d, %Y %H:%M %p')
-        except Exception():
+        except (ValueError, TypeError):
             # it 'entrega hora' contains 'Produzir agora' it's also PE
             if (pedido['entrega hora'] == 'Produzir agora.'):
                 entrega_hora = 'PE'
@@ -788,6 +786,7 @@ def get_datetime_from_pedido(pedido):
         # here the result from the test from date format ('PE' if passed)
         else:
             entrega_hora = 'PE'
+    entrega_hora = 'PE'
 
     # now get the date and hour from scheduled 'pedido' if its not PE
     if entrega_hora != 'PE':
@@ -817,7 +816,7 @@ def get_datetime_from_pedido(pedido):
 
 # FUNCTION TO UPDATE ALL THE DB
 def copy_bubble_all():
-    copy_bubble_usr(get_date_grammo('usr'))
+    copy_bubble_usr_date(get_date_grammo('usr'))
     copy_bubble_categorias(get_date_grammo('categorias'))
     copy_bubble_produtos(get_date_grammo('produtos'))
     copy_bubble_compras(get_date_grammo('compras'))

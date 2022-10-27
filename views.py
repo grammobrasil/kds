@@ -23,13 +23,14 @@ import kds.functions_view
 import kds.heatmap
 # import the grammo apps / libraries / functions / classes
 from kds import app
-from kds.api.api import api_page
+from kds.api.api import api_bp
 from kds.config import Config
 from kds.forms import LoginForm
 
 # configure the app com resources
 app.config.from_object(Config)
-app.register_blueprint(api_page, url_prefix='/api')
+app.register_blueprint(api_bp, url_prefix='/api')
+
 Bootstrap(app)
 datepicker(app)
 

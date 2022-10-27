@@ -82,9 +82,8 @@
                     // format the dropdown menu to update the payment status of each 'compra'
                     $('<td></td>').html(function() {                        
                         var tmp = '<select class="status" id='+item['número']+'>'
-                            +'<option value="" disabled selected>Status</option>'
+                            +'<option value="in_process" selected>Pendente</option>'
                             +'<option value="approved">Pago</option>'
-                            +'<option value="in_process">Pendente</option>'
                             +'<option value="free">Cortesia</option>'
                             +'<option value="canceled">Cancelado</option>'
                         +'</select>'

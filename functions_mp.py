@@ -134,12 +134,15 @@ def update_mp_status(start):
                     ["transaction_details"]["net_received_amount"]}
                 )
 
-            client.grammo.compras.update_one(
-                {
-                    'bubble._id': bubble_id},
-                {
-                    '$set': {'dados.pgto': dict_pgto}},
-                upsert=True)
+            try:
+                client.grammo.compras.update_one(
+                    {
+                        'bubble._id': bubble_id},
+                    {
+                        '$set': {'dados.pgto': dict_pgto}},
+                    upsert=True)
+            except Exception():
+                return 'Erro salvando dados'
         else:
             None
 

@@ -1,7 +1,12 @@
+import sys
+sys.path.append("./")
+sys.path.append("../")
+
 import pymongo
 from datetime import datetime
 from kds.functions_mp import update_mp_status
-from kds.functions_bubble import update_mongo, copy_bubble_all, mongo_updated_times # noqa
+from kds.functions_bubble import update_mongo, copy_bubble_all # noqa
+from kds.functions_internal import mongo_updated_times
 from kds.config import Config
 
 client = pymongo.MongoClient(Config.atlas_access)
@@ -34,7 +39,7 @@ mongo_updated_times(coll_list)
 
 # UPDATE THE MP STATUS BASED ON THE
 # LAST UPDATE TIME SAVE IN THE RESPECTIVE FILE
-with open('/home/rafael/grammo/grammo/mp_lastupdate', 'r+') as f:
+with open('mp_lastupdate', 'r+') as f:
     lastupdate = datetime.fromisoformat(f.read())
     update_mp_status(lastupdate)
     f.seek(0)
