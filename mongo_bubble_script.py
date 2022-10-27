@@ -1,12 +1,7 @@
-import sys
-sys.path.append("./")
-sys.path.append("../")
-
 import pymongo
 from datetime import datetime
 from kds.functions_mp import update_mp_status
 from kds.functions_bubble import update_mongo, copy_bubble_all # noqa
-from kds.functions_internal import mongo_updated_times
 from kds.config import Config
 
 client = pymongo.MongoClient(Config.atlas_access)
@@ -32,10 +27,6 @@ bubble_things = [
 for thing in bubble_things:
     update_mongo(db, thing)
 copy_bubble_all()
-
-# UPDATE THE MONGO UPDATED TIME FILE
-coll_list = ['compras', 'usr']
-mongo_updated_times(coll_list)
 
 # UPDATE THE MP STATUS BASED ON THE
 # LAST UPDATE TIME SAVE IN THE RESPECTIVE FILE

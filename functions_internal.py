@@ -163,7 +163,7 @@ def mongo_updated_times(coll_list):
         doc_time = lastdoc[0]['mongotime']
         updated_time_dic.update({item: doc_time.isoformat()})
 
-    json_file = '/home/rafael/grammo/grammo/mongo_updated_times.json'
+    json_file = 'mongo_updated_times.json'
 
     with open(json_file, 'w', encoding='utf-8') as file:
         try:
