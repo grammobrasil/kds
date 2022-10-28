@@ -91,15 +91,15 @@ def NF_grammo(dados_compra, dados_cliente=False):
             email=dados_cliente['email'],
             numero_documento=dados_cliente['CPF'], # numero do cpf ou cnpj # noqa
             indicador_ie=9,                 # 9=Não contribuinte
-            #endereco_logradouro=dados_cliente['logradouro'],
-            #endereco_numero=dados_cliente['numero'],
-            #endereco_complemento=dados_cliente['complemento'],
-            #endereco_bairro=dados_cliente['bairro'],
-            #endereco_municipio=dados_cliente['municipio'],
-            #endereco_uf=dados_cliente['UF'],
-            #endereco_cep=dados_cliente['CEP'],
-            #endereco_pais=CODIGO_BRASIL,
-            #endereco_telefone=dados_cliente['telefone'],
+            # endereco_logradouro=dados_cliente['logradouro'],
+            # endereco_numero=dados_cliente['numero'],
+            # endereco_complemento=dados_cliente['complemento'],
+            # endereco_bairro=dados_cliente['bairro'],
+            # endereco_municipio=dados_cliente['municipio'],
+            # endereco_uf=dados_cliente['UF'],
+            # endereco_cep=dados_cliente['CEP'],
+            # endereco_pais=CODIGO_BRASIL,
+            # endereco_telefone=dados_cliente['telefone'],
         )
         nota_fiscal.cliente = cliente
 
@@ -217,10 +217,10 @@ def NF_send(compra_num, cliente=False):
     dados_cliente = {}
     if cliente:
         detalhe_compra = compra_lookup(resumo_compra['bubble']['_id'])
-        
+
         if (len(detalhe_compra[0]['conteúdo_pedido'][0]['end']) > 0):
             end_dict = NF_end_split(
-                detalhe_compra[0]['conteúdo_pedido'][0]['end'][0]['endereços']['geo']
+                detalhe_compra[0]['conteúdo_pedido'][0]['end'][0]['endereços']['geo'] # noqa
                 )
             dados_cliente['logradouro'] = end_dict['logradouro']
             dados_cliente['numero'] = end_dict['numero']
@@ -228,7 +228,7 @@ def NF_send(compra_num, cliente=False):
             dados_cliente['municipio'] = end_dict['municipio']
             dados_cliente['UF'] = end_dict['UF']
             dados_cliente['CEP'] = end_dict['CEP']
-            dados_cliente['complemento'] = detalhe_compra[0]['conteúdo_pedido'][0]['end'][0]['endereços']['complemento'][0:60]
+            dados_cliente['complemento'] = detalhe_compra[0]['conteúdo_pedido'][0]['end'][0]['endereços']['complemento'][0:60] # noqa
         else:
             dados_cliente['logradouro'] = ''
             dados_cliente['numero'] = ''
@@ -243,7 +243,7 @@ def NF_send(compra_num, cliente=False):
         dados_cliente['CPF'] = detalhe_usr['bio']['CPF']
         dados_cliente['email'] = detalhe_usr['contato']['email']
         dados_cliente['telefone'] = detalhe_usr['contato']['fone']
-        
+
     # Try to send to SEFAZ
     try:
         xml_return = NF_grammo(dados_compra, dados_cliente)

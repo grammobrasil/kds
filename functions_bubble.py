@@ -29,7 +29,7 @@ def read_bubble(thing, constraints):
     remaining = 100
 
     while remaining > 0:
-        #data we send with the search. Search constraints would be here
+        # data we send with the search. Search constraints would be here
         params = {
             'cursor': cursor,
             'api_token': API_KEY,
@@ -41,7 +41,11 @@ def read_bubble(thing, constraints):
         response = session.get(url)
 
         if response.status_code != 200:
-            raise ValueError('Error with status code {}, id = {}'.format(response.status_code, _id))
+            raise ValueError(
+                'Error with status code {}'.format(
+                    response.status_code
+                    )
+                )
 
         chunk = response.json()['response']
         if 'remaining' in chunk:
@@ -73,7 +77,11 @@ def read_bubble_id(thing, _id):
     response = session.get(url)
 
     if response.status_code != 200:
-        raise ValueError('Error with status code {}, id = {}'.format(response.status_code, _id))
+        raise ValueError(
+            'Error with status code {}, id = {}'.format(
+                response.status_code, _id
+                )
+            )
         return None
 
     return response.json()['response']
@@ -252,9 +260,9 @@ def copy_bubble_usr_unique(doc):
 
         # uddate 'usr' - 'endereços'
         copy_bubble_endereços(doc["_id"])
-        
+
         return "'Usr' successfully updated!"
-    
+
     except Exception() as e:
         return e
 
@@ -488,7 +496,7 @@ def copy_bubble_compras_unique(compra):
                 dict_pedido_bubble.update(
                     {'pedidos_box': pedido_body['pedidos box']}
                     ) if pedido_body['pedidos box'] != 0 else None
-            
+
             if 'km' in pedido_body:
                 dict_pedido_bubble.update(
                     {'km': pedido_body['km']}
@@ -712,7 +720,7 @@ def copy_bubble_compras_unique(compra):
                     }
                 },
                 upsert=True)
-    
+
     return "'Compra' successfully updated!"
 
 
@@ -723,7 +731,7 @@ def copy_bubble_compras(last_date):
     for compra in client.bubble.compra.aggregate(pipe_bubble):
         # set the id of the usr from grammo DB
         copy_bubble_compras_unique(compra)
-    
+
     return "'Compras' successfully updated!"
 
 
@@ -734,7 +742,7 @@ def get_usr_address_from_bubble_geo(usr_obj_id, bubble_geo_add):
     pipe = [
         {
             "$match": {
-                "_id": usr_obj_id
+                "_id": ObjectId(usr_obj_id)
             }
         },
         {
@@ -828,3 +836,11 @@ def get_compra_by_num(num):
     compra_num = client.grammo.compra_num.find_one({"num": num})
     compra = client.grammo.compras.find_one({"bubble._id": compra_num["_id"]})
     return compra
+
+
+def sync_missing_compra():
+    bubble_all = read_bubble('compra', constraints=None)
+
+    for compra in bubble_all:
+        if not client.grammo.compras.find_one({'bubble._id': compra['_id'] }):
+            copy_bubble_compras_unique(compra)
