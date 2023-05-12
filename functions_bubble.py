@@ -227,6 +227,7 @@ def copy_bubble_usr_unique(doc):
     phone = doc['FONE'] if 'FONE' in doc else ''
     CPF = doc['CPF'] if 'CPF' in doc else ''
     DN = doc['DATA DE NASCIMENTO'] if 'DATA DE NASCIMENTO' in doc else ''
+    created_date = doc['Created Date'] if 'Created Date' in doc else ''
 
     # update 'bio', 'bubble' and 'contato'
     try:
@@ -238,7 +239,7 @@ def copy_bubble_usr_unique(doc):
                     'bubble':
                         {
                             '_id': doc['_id'],
-                            'created_date': doc['Created Date'],
+                            'created_date': created_date,
                             'modified_date': doc['Modified Date'],
                         },
                     'bio':
@@ -274,54 +275,6 @@ def copy_bubble_usr_date(last_date):
 
     for doc in client.bubble.user.aggregate(pipe_bubble):
         copy_bubble_usr_unique(doc)
-
-
-def copy_bubble_usr_old(last_date):
-
-    # pipe bubble with last results
-    pipe_bubble = [{"$match": {"Created Date": {"$gt": last_date}}}]
-
-    for doc in client.bubble.user.aggregate(pipe_bubble):
-
-        # check if fields exists, set empty if not
-        DDD = doc['DDD'] if 'DDD' in doc else ''
-        phone = doc['FONE'] if 'FONE' in doc else ''
-        CPF = doc['CPF'] if 'CPF' in doc else ''
-        DN = doc['DATA DE NASCIMENTO'] if 'DATA DE NASCIMENTO' in doc else ''
-
-        # update 'bio', 'bubble' and 'contato'
-        client.grammo.usr.update_one(
-            {'bubble._id': doc["_id"]},
-            {
-                "$set":
-                {
-                    'bubble':
-                        {
-                            '_id': doc['_id'],
-                            'created_date': doc['Created Date'],
-                            'modified_date': doc['Modified Date'],
-                        },
-                    'bio':
-                        {
-                            'nome': doc['nome'],
-                            'apelido': doc['apelido'],
-                            'DN': DN,
-                            'CPF': CPF,
-                        },
-                    'contato':
-                        {
-                            'DDD': DDD,
-                            'fone': phone,
-                            'email': doc['authentication']['email']['email'],
-                        },
-                }
-            },
-            upsert=True)
-
-        # uddate 'usr' - 'endereços'
-        copy_bubble_endereços(doc["_id"])
-
-    return "'Usr' successfully updated!"
 
 
 def copy_bubble_categorias(last_date):
@@ -526,7 +479,7 @@ def copy_bubble_compras_unique(compra):
                 pedido_address = get_usr_address_from_bubble_geo(
                     usr, pedido_body['endereço']['address']
                     )
-            except KeyError:
+            except (KeyError, IndexError):
                 pass
             else:
                 dict_pedido.update(
@@ -756,6 +709,8 @@ def get_usr_address_from_bubble_geo(usr_obj_id, bubble_geo_add):
 
     ]
 
+    print(usr_obj_id)
+    print(bubble_geo_add)
     # return the first ocurrence ([0]) in the given list,
     # assuming all the values will be the same
     end_out = {}
@@ -763,11 +718,14 @@ def get_usr_address_from_bubble_geo(usr_obj_id, bubble_geo_add):
         end_out['_id'] = list(
             client.grammo.usr.aggregate(pipe)
             )[0]['endereços']['_id']
+    except IndexError():
+        raise IndexError(usr_obj_id)
+    try:
         end_out['bubble'] = list(
             client.grammo.usr.aggregate(pipe)
             )[0]['endereços']['bubble']
-    except IndexError:
-        pass
+    except IndexError():
+        raise IndexError(bubble_geo_add)
 
     return end_out
 
@@ -794,7 +752,8 @@ def get_datetime_from_pedido(pedido):
         # here the result from the test from date format ('PE' if passed)
         else:
             entrega_hora = 'PE'
-    entrega_hora = 'PE'
+    else:
+        entrega_hora = 'PE'
 
     # now get the date and hour from scheduled 'pedido' if its not PE
     if entrega_hora != 'PE':
@@ -812,10 +771,10 @@ def get_datetime_from_pedido(pedido):
             entregaM = pedido['entrega hora'][3:5]
             # set the 'entrega hora' as a full time with the ajusted values
             entrega_hora = entregaD.replace(
-                hour=int(entregaH),
+                hour=(int(entregaH) + 3),  # >>> +3h to adjust to UTC
                 minute=int(entregaM),
                 second=0,
-                microsecond=0
+                microsecond=0,
                 )
 
     # Finally, returns the full time if its schedulled or 'PE' if not
@@ -842,5 +801,32 @@ def sync_missing_compra():
     bubble_all = read_bubble('compra', constraints=None)
 
     for compra in bubble_all:
-        if not client.grammo.compras.find_one({'bubble._id': compra['_id'] }):
+        if not client.grammo.compras.find_one({'bubble._id': compra['_id']}):
             copy_bubble_compras_unique(compra)
+
+
+def update_entrega_hora():
+    for compra in client.grammo.compras.find(
+            {'pedidos.entrega_hora': {'$exists': 0}}
+            ):
+        for pedido in compra['pedidos']:
+            pedido_bubble = client.bubble.pedido.find_one(
+                {'_id': pedido['bubble']['_id']})
+            if pedido_bubble is None:
+                continue
+            try:
+                client.grammo.compras.update_one(
+                    {'pedidos.bubble._id': pedido['bubble']['_id']},
+                    {
+                        '$set': {
+                            'pedidos.$.entrega_hora':
+                            get_datetime_from_pedido(pedido_bubble)
+                        }
+                    },
+                    upsert=False
+                )
+            except Exception as e:
+                print(e)
+                print('Erro em :' + str(compra['_id']))
+            else:
+                print('Sucesso em :' + str(compra['_id']))

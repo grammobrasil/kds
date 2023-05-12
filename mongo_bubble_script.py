@@ -1,3 +1,4 @@
+import pathlib
 import pymongo
 from datetime import datetime
 from kds.functions_mp import update_mp_status
@@ -30,7 +31,8 @@ copy_bubble_all()
 
 # UPDATE THE MP STATUS BASED ON THE
 # LAST UPDATE TIME SAVE IN THE RESPECTIVE FILE
-with open('mp_lastupdate', 'r+') as f:
+cwd = pathlib.Path(__file__).parent.resolve()
+with open(cwd / 'mp_lastupdate', 'r+') as f:
     lastupdate = datetime.fromisoformat(f.read())
     update_mp_status(lastupdate)
     f.seek(0)

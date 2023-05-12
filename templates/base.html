@@ -24,7 +24,6 @@
 {% block body %}
 
     <div class="container">
-        <img class="jumbotron-image" src="{{url_for('static', filename='cover2.png')}}"/>
         <h1>KDS - Grammo Brasil</h1>
     </div>
 
@@ -38,8 +37,9 @@
     <div class="container">
         <button onclick='window.location.href="{{ url_for('logout') }}";')><u><b>LOGOUT</b></u></button>        
         <button onclick=$("#main_block").load("{{ url_for('realtime_compras') }}")>Compras tempo real</button>
+        <button onclick=$("#main_block").load("{{ url_for('realtime_pedidos') }}")>Pedidos tempo real</button>
         <button onclick=$("#main_block").load("{{ url_for('heatmap_grammo') }}")>Mapa de calor endereços</button>
-        <button onclick=$("#main_block").load("{{ url_for('dev') }}")>Dev</button>
+        <button onclick=$("#main_block").load("{{ url_for('insumos') }}")>Insumos</button>
         
     </div>
     {% endblock navbar %}

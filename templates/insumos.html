@@ -1,0 +1,220 @@
+
+{% block content %}
+<style>
+  .ui-autocomplete {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  display: none;
+  float: left;
+  min-width: 160px;
+  padding: 5px 0;
+  margin: 2px 0 0;
+  list-style: none;
+  font-size: 14px;
+  text-align: left;
+  background-color: #ffffff;
+  border: 1px solid #cccccc;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  -webkit-box-shadow: 0 6px 12px rgba(0, 0, 0, 0.175);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.175);
+  background-clip: padding-box;
+}
+
+.ui-autocomplete > li > div {
+  display: block;
+  padding: 3px 20px;
+  clear: both;
+  font-weight: normal;
+  line-height: 1.42857143;
+  color: #333333;
+  white-space: nowrap;
+}
+
+.ui-state-hover,
+.ui-state-active,
+.ui-state-focus {
+  text-decoration: none;
+  color: #262626;
+  background-color: #f5f5f5;
+  cursor: pointer;
+}
+
+.ui-helper-hidden-accessible {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+</style>
+
+<script>
+
+  $(function () {
+    
+    form_config_nutr = {
+      url : "{{ url_for('api.any', coll='op_nutr')}}",
+      field : {
+        _id : {
+          description : 'Código',
+          readonly : true,
+        },
+        cod_fatores : {
+          description : 'Cód fatores',
+        },
+        cod_fatores : {
+          description : 'Nome simplificado',
+        },
+        cod_IBGE : {
+          description : 'Cód IBGE',
+        },
+        cod_TACO : {
+          description : 'Cód TADO',
+        },
+        cod_TBCA : {
+          description : 'Cód TBCA',
+        },
+        fonte : {
+          description : 'Tabela fonte',
+        },
+      }
+    }
+
+    form_config_insumos = {
+      url : "{{ url_for('api.insumos')}}",
+      //url : "{{ url_for('api.any', coll='op_insumos')}}",
+      field : {
+        _id : {
+          description : 'Número',
+          readonly : true,
+        },
+        descr : {
+          description : 'Descrição',
+        },
+        nutriente : {
+          field_type : 'dropdown',
+          description : 'Nutriente',
+          coll : "op_nutr",
+          drop_name : 'nome_simples',
+          drop_select : 'cod_nutr',
+        },
+        marca : {
+          field_type : 'dropdown',
+          description : 'Marca',
+          coll : "op_marcas",
+          drop_name : 'descr',
+          drop_select : 'marca_id',
+        },
+        unidade : {
+          field_type : 'dropdown',
+          description : 'Unidade',
+          coll : "op_un",
+          drop_name : 'descr',
+          drop_select : 'un',
+        },
+        g : {
+          description : 'g / un',           
+        },
+      }
+    }
+
+    form_config = form_config_insumos
+
+    $("#input_search").autocomplete({
+      source: form_config.url, // Remember that 'source' uses 'term' var to pull the API
+      classes: {
+        "ui-autocomplete": "highlight"
+      },
+      // url_tmp = "{{ url_for('api.any', db='dev', coll='op_insumos')}}" + "?field=insumos+item=" + ui.item.value,
+      select: function (event, ui) {
+        url_selected = form_config.url + "?item="+ ui.item.value;
+        $.getJSON(url_selected, function (data_api) {
+
+          function create_dropdown(field_key, field_data) {
+            let field_url = '{{ url_for("api.any", db="dev", coll="COLL")}}'.replace("COLL", field_data.coll)
+            let out_sel = $('<select/>');
+            out_sel.attr('id', field_key);
+            $.getJSON(field_url, function (data_dropdown) {
+                $.each(data_dropdown, function (key, entry) {
+                  opt = $('<option></option>').attr('value', entry._id).text(entry[field_data.drop_name]);
+                  out_sel.append(opt);
+                })
+                out_sel.val(data_api[field_data.drop_select]);
+              });
+            return out_sel;
+          }
+
+          $('#input_search').val(ui.item.label);
+
+          $.each(form_config.field, function (key, entry) {
+            div = $('<div/>');
+            div.attr('div_field')
+            div.append(entry.description + ': ');
+
+            if (entry.field_type == 'dropdown') {
+              out = create_dropdown(key, entry);
+            }
+
+            else {
+              out = $('<input/>');
+              out.attr('id', key);
+              if(entry.readonly) out.attr('readonly', true);
+              out.val(data_api[key]);
+            }
+            out.attr('form', 'form_details');
+            div.append(out);
+
+            $("#div_editdata").append(div);
+
+          });
+          
+          $("#div_editdata").append(div);
+          $("#div_editdata").append('<div/>').append('<button id="form_submit">Salvar</button>')
+
+        });
+      },
+      close: function() {
+         $('#div_editdata').html('')
+        },
+    });
+
+    $("#form_submit").click(function(e){
+      e.preventDefault();
+      formData = new FormData($("#form_details")[0]);
+      _json = JSON.stringify(Object.fromEntries(formData));
+      $.post({
+        url: form_config.url,
+        datafield_type: 'json',
+        data: _json,
+        contentfield_type: "application/json",
+        success: function(data) {
+          console.log("Data: " + data + "\nStatus: " + status);
+            }
+      });
+    });
+  });
+
+</script>
+
+<div id="main">
+  <h1>Editar dados</h1>
+  
+  <form id="form_details">
+    <div>
+      <b>Pesquisar: <input field_type="text" id="input_search"></b>
+    </div>
+    <div id="div_editdata">
+    </div>
+  </form>
+</div>
+
+
+{% endblock %}
+

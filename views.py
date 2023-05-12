@@ -36,13 +36,11 @@ datepicker(app)
 
 # set the database
 client = pymongo.MongoClient(Config.atlas_access)
-# db = client["bubble"]
+client.grammo.command('ping')
 
 # Call the login manager
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
-
-tmp = list(client.grammo.nf.find())
 
 # convert in Pandas DF the Mongo Collections
 nutrientes = ['Carbo', 'Grão', 'Legumes', 'Proteina']
@@ -76,14 +74,10 @@ def index():
 ##############################
 
 
-@app.route("/dev")
+@app.route("/insumos")
 @login_required
-def dev():
-    out = []
-    for doc in client.grammo.nutr_TACO.find():
-        out.append(doc['nome_tec'])
-    lista = list(out)
-    return render_template("dev.html", lista=lista)
+def insumos():
+    return render_template("insumos.html")
 
 ##############################
 
@@ -234,6 +228,13 @@ def realtime_compras():
 
 ##############################
 
+@app.route("/realtime_pedidos", methods=['POST', 'GET'])
+@login_required
+def realtime_pedidos():
+    return render_template("realtime_pedidos.html")
+
+
+##############################
 
 @app.route("/listen", methods=['GET'])
 @login_required
@@ -274,3 +275,39 @@ def insta_er():
     target_profile = request.args.get('profile')
     er = kds.functions_internal.insta_engagement_rate(target_profile)
     return er
+
+
+##############################
+
+
+@app.route("/listen2", methods=['GET'])
+@login_required
+def listen2():
+    def respond_to_client2():
+
+        times = {}
+        times['start'] = datetime.strptime(request.args.get('start')[:-1], "%Y-%m-%dT%H:%M:%S.%f")
+        times['end'] = datetime.strptime(request.args.get('end')[:-1], "%Y-%m-%dT%H:%M:%S.%f")
+        times['prazo_entrega'] = int(request.args.get('prazo'))
+
+        realtime_stamp = ''
+
+        while True:
+            
+            
+            last_mongo_date_stamp = kds.functions_internal.mongo_updated_time('compras') # noqa
+
+            if (last_mongo_date_stamp != realtime_stamp):
+
+                pipe_pedidos = kds.functions_view.pipe_pedidos(times)
+                out = list(client.grammo.compras.aggregate(pipe_pedidos))
+                data = dumps(out)
+                yield f"data: {data}\nevent: online\n\n"
+
+            realtime_stamp = last_mongo_date_stamp
+            time.sleep(15)
+
+    return app.response_class(
+        stream_with_context(respond_to_client2()),
+        mimetype='text/event-stream'
+        )

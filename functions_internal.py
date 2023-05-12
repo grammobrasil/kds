@@ -199,7 +199,7 @@ def mongo_updated_time(coll):
 
 def insta_engagement_rate(target_profile):
     loader = Instaloader()
-    loader.load_session_from_file('grammobrasil')
+    loader.load_session_from_file('r.thiesen')
 
     profile = Profile.from_username(loader.context, target_profile)
     data = {}
@@ -225,3 +225,17 @@ def insta_engagement_rate(target_profile):
     data['engagement'] = engagement * 100
 
     return data
+
+
+def find_client(regex):
+    tmp = client.grammo.usr.aggregate([
+        {
+            '$match': {
+                'bio.nome': {
+                    '$regex': regex
+                    }
+            }
+        }
+    ])
+
+    return list(tmp)
