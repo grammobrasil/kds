@@ -228,6 +228,7 @@ def realtime_compras():
 
 ##############################
 
+
 @app.route("/realtime_pedidos", methods=['POST', 'GET'])
 @login_required
 def realtime_pedidos():
@@ -286,15 +287,17 @@ def listen2():
     def respond_to_client2():
 
         times = {}
-        times['start'] = datetime.strptime(request.args.get('start')[:-1], "%Y-%m-%dT%H:%M:%S.%f")
-        times['end'] = datetime.strptime(request.args.get('end')[:-1], "%Y-%m-%dT%H:%M:%S.%f")
-        times['prazo_entrega'] = int(request.args.get('prazo'))
+        times['start'] = datetime.strptime(
+            request.args.get('start')[:-1], "%Y-%m-%dT%H:%M:%S.%f")
+        times['end'] = datetime.strptime(
+            request.args.get('end')[:-1], "%Y-%m-%dT%H:%M:%S.%f")
+        times['prazo_entrega'] = int(
+            request.args.get('prazo'))
 
         realtime_stamp = ''
 
         while True:
-            
-            
+
             last_mongo_date_stamp = kds.functions_internal.mongo_updated_time('compras') # noqa
 
             if (last_mongo_date_stamp != realtime_stamp):
@@ -311,3 +314,12 @@ def listen2():
         stream_with_context(respond_to_client2()),
         mimetype='text/event-stream'
         )
+
+
+##############################
+
+
+@app.route("/ifood")
+@login_required
+def ifood():
+    return render_template("ifood.html")

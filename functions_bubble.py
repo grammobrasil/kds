@@ -1,5 +1,5 @@
 import pymongo
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import json
 from bson.objectid import ObjectId
@@ -11,7 +11,7 @@ client = pymongo.MongoClient(Config.atlas_access)
 
 # function to extract API from bubble
 
-def read_bubble(thing, constraints):
+def read_bubble(thing, constraints=None, dev=''):
 
     session = requests.Session()
 
@@ -19,7 +19,7 @@ def read_bubble(thing, constraints):
     # so that the script has full access to the data
 
     API_KEY = Config.bubble_API_KEY
-    base_url = 'https://grammo.app/api/1.1/obj/' + thing
+    base_url = 'https://grammo.app/' + dev + 'api/1.1/obj/' + thing + '/'
 
     # Query initial parameters.
     # We do not send a limit parameter (default is 100)
@@ -60,14 +60,14 @@ def read_bubble(thing, constraints):
     return dict_pedidoboxput
 
 
-def read_bubble_id(thing, _id):
+def read_bubble_id(thing, _id, dev=''):
 
     session = requests.Session()
 
     # API KEY as defined in the settings tab,
     # so that the script has full access to the data
     API_KEY = Config.bubble_API_KEY
-    base_url = 'https://grammo.app/api/1.1/obj/' + thing
+    base_url = 'https://grammo.app/' + dev + 'api/1.1/obj/' + thing + '/'
 
     params = {
         'api_token': API_KEY
@@ -85,6 +85,31 @@ def read_bubble_id(thing, _id):
         return None
 
     return response.json()['response']
+
+
+def acknowledge_bubble_id(thing, _id, timevalue, dev=''):
+
+    base_url = 'https://grammo.app/' + dev + 'api/1.1/obj/' + thing + '/'
+    url = base_url + _id
+
+    headers = {
+        'Authorization': 'Bearer ' + Config.bubble_API_KEY,
+    }
+    payload = {
+        'api_sync': timevalue,
+        'by_api': 'Sim'
+    }
+
+    response = requests.request('PATCH', url, headers=headers, data=payload)
+
+    if response.status_code != 204:
+        raise ValueError(
+            'Error with status code {}, id = {}'.format(
+                response.status_code, _id
+                )
+            )
+    else:
+        return response.status_code
 
 
 # function to update mongo from bubble
@@ -127,9 +152,9 @@ def get_db_lastdate(col):
             "$project":
                 {
                     "_id": 0,
-                    "nome": 1,
-                    "Creation Date": 1,
-                    "Modified Date": 1,
+                    # "nome": 1,
+                    # "Creation Date": 1,
+                    # "Modified Date": 1,
                     "convertedDate": 1
                 },
         },
@@ -145,6 +170,42 @@ def get_db_lastdate(col):
         return dict_pedidobox_list[0]['Modified Date']
 
     # return 01/01/2020 if not (to get all data from Grammo begining in Bubble
+    except Exception:
+        return datetime(2020, 1, 1).strftime("%c")
+
+
+def get_bubble_lastdate(thing):
+
+    coll = client.bubble[thing]
+    # fields to pipe the aggragate
+    pipe = [
+        {
+            "$addFields":
+                {"Date": {"$toDate": '$Modified Date'}}
+        },
+        {
+            "$sort":
+                {"Date": -1}
+        },
+        {
+            "$project":
+                {
+                    "_id": 0,
+                    # "nome": 1,
+                    # "Creation Date": 1,
+                    # "Modified Date": 1,
+                    "Date": 1
+                },
+        },
+        {
+            "$limit": 1,
+        }
+    ]
+
+    # try to see if theres is a date
+    try:
+        date = list(coll.aggregate(pipe))[0]['Date']
+        return date.isoformat()
     except Exception:
         return datetime(2020, 1, 1).strftime("%c")
 
@@ -214,10 +275,14 @@ def copy_bubble_endereços(bubble_id):
         }
         array_end.append(end)
 
-    client.grammo.usr.update_one(
-        {'bubble._id': bubble_id},
-        {'$set': {'endereços': array_end}},
-        upsert=True)
+    try:
+        client.grammo.usr.update_one(
+            {'bubble._id': bubble_id},
+            {'$set': {'endereços': array_end}},
+            upsert=True)
+    except Exception as e:
+        print(e)
+        print('Erro em :' + str(bubble_id))
 
 
 def copy_bubble_usr_unique(doc):
@@ -407,6 +472,7 @@ def copy_bubble_compras_unique(compra):
         'pago',
         'status',
         'validado',
+        'hora pag',
     ]
 
     for field in bubble_fields:
@@ -480,6 +546,8 @@ def copy_bubble_compras_unique(compra):
                     usr, pedido_body['endereço']['address']
                     )
             except (KeyError, IndexError):
+                print(compra['_id'] + ' - ' + pedido_body['_id'])
+                print('Pedido sem endereço')
                 pass
             else:
                 dict_pedido.update(
@@ -770,12 +838,18 @@ def get_datetime_from_pedido(pedido):
             entregaH = pedido['entrega hora'][0:2]
             entregaM = pedido['entrega hora'][3:5]
             # set the 'entrega hora' as a full time with the ajusted values
-            entrega_hora = entregaD.replace(
-                hour=(int(entregaH) + 3),  # >>> +3h to adjust to UTC
-                minute=int(entregaM),
-                second=0,
-                microsecond=0,
-                )
+            try:
+                entrega_hora = entregaD.replace(
+                    hour=int(entregaH),  # >>> +3h to adjust to UTC
+                    minute=int(entregaM),
+                    second=0,
+                    microsecond=0,
+                    )
+                # >>> +3h to adjust to UTC
+                entrega_hora = entrega_hora + timedelta(hours=3)
+            except (ValueError, TypeError) as e:
+                print(e)
+                print('Erro no no horário do Pedido ' + pedido['_id'])
 
     # Finally, returns the full time if its schedulled or 'PE' if not
     return entrega_hora
@@ -802,7 +876,41 @@ def sync_missing_compra():
 
     for compra in bubble_all:
         if not client.grammo.compras.find_one({'bubble._id': compra['_id']}):
-            copy_bubble_compras_unique(compra)
+            try:
+                copy_bubble_compras_unique(compra)
+            except IndexError:
+                print("IndexError: " + compra['_id'])
+
+
+def sync_missing_usr():
+    bubble_all = read_bubble('user', constraints=None)
+
+    for usr in bubble_all:
+        if not client.grammo.usr.find_one({'bubble._id': usr['_id']}):
+            try:
+                copy_bubble_usr_unique(usr)
+            except IndexError:
+                print("IndexError: " + usr['_id'])
+
+
+def sync_missing_usr_end():
+    pipe = [
+        {
+            '$match':
+            {
+                '$expr': {
+                    '$eq': [{'$size': '$endereços'}, 0]
+                }
+            }
+        },
+    ]
+
+    for doc in client.grammo.usr.aggregate(pipe):
+        try:
+            copy_bubble_endereços(doc['bubble']['_id'])
+        except Exception as e:
+            print(e)
+            print(doc['_id'] + ' failed')
 
 
 def update_entrega_hora():
@@ -830,3 +938,17 @@ def update_entrega_hora():
                 print('Erro em :' + str(compra['_id']))
             else:
                 print('Sucesso em :' + str(compra['_id']))
+
+
+def sync_missing_compra_confirm():
+    out_grammo = list(client.grammo.compras.aggregate([{ '$match': { 'dados.confirm': { '$exists': False } } }]))
+
+    for doc in out_grammo:
+        docbubble = client.bubble.compra.find_one({'_id': doc['bubble']['_id']})
+        try:
+            client.grammo.compras.update_one(
+                {'_id': doc['_id']},
+                {'$set': {'dados.confirm': docbubble['hora pag']}}
+            )
+        except Exception as e:
+            pass

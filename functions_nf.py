@@ -265,7 +265,7 @@ def NF_send(compra_num, cliente=False):
                 'dados_cliente': dados_cliente,
             },
         )
-        return(nf_num)
+        return (nf_num)
 
 
 def NF_insert_one(_id, chave, compra_num, nf_num, valor_total):

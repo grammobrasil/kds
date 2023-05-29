@@ -14,7 +14,6 @@ bubble_things = [
     'categoria',
     'compra',
     'endereços',
-    'grammo_final',
     'pedido',
     'produto',
     'ponto',

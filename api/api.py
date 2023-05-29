@@ -8,6 +8,7 @@ client = pymongo.MongoClient(Config.atlas_access)
 
 api_bp = Blueprint('api', __name__)
 
+
 def pipe_from_dict(pipe):
 
     pipe_out = []
@@ -24,7 +25,9 @@ def pipe_from_dict(pipe):
     # Lookup fields
     if 'lookup' in pipe:
         for field in pipe['lookup']:
-            foreignField = field['foreignField'] if 'foreignField' in field else '_id' #noqa
+            foreignField = field['foreignField'] \
+                if 'foreignField' in field \
+                else '_id'  # noqa
             pipe_out.append({
                 "$lookup":
                 {
@@ -40,7 +43,10 @@ def pipe_from_dict(pipe):
             pipe_out.append({
                 '$unwind': '$' + field['as'] + '.' + field['as_field']
             })
-            proj_dic.update({field['as']: '$'+field['as']+'.'+field['as_field']})
+            proj_dic.update({
+                field['as']: '$'
+                + field['as']+'.'
+                + field['as_field']})
 
     # Project fields
     if 'proj_fields' in pipe:
@@ -58,7 +64,7 @@ def pipe_from_dict(pipe):
             match_list.append(
                 {field: {'$regex': pipe['match'][field], '$options': 'i'}}
                 )
-    
+
     # Term fields
     elif 'term' in pipe:
         for field in proj_dic:
@@ -70,7 +76,7 @@ def pipe_from_dict(pipe):
     if ('term' or 'match') in pipe:
         pipe_out.append(
             {
-                '$match': 
+                '$match':
                     {
                         "$or": match_list
                     },
@@ -106,7 +112,8 @@ def insumos():
     if request.args.get('term'):
         pipe_insumos_dict.update({'term': request.args.get('term')})
         out = []
-        for doc in client.dev.op_insumos.aggregate(pipe_from_dict(pipe_insumos_dict)):
+        for doc in client.dev.op_insumos.aggregate(
+                pipe_from_dict(pipe_insumos_dict)):
             txt = "{nutriente} - {marca}, {descr}, {g} g/un, unidade : {un}"
             item = {'value': doc['_id'], 'label': txt.format(**doc)}
             out.append(item)
@@ -140,7 +147,7 @@ def any():
             field = request.args.get('field')
             value = request.args.get('value')
             pipe.update({'match': {field: value}})
-        
+
         pipe_final = pipe_from_dict(pipe)
         mongo_out = list(client[db][coll].aggregate(pipe_final))
         page_sanitized = json.loads(json_util.dumps(mongo_out))
@@ -157,4 +164,4 @@ def any():
             return e
 
     else:
-        return dumps(list(client.dev[coll].find({})))
+        return json.dumps(list(client.dev[coll].find({})))

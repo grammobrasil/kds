@@ -307,58 +307,8 @@ def listen_pipes(start, end):
             },
         }
     ]
-    
+
     return listen_pipes
-
-
-def pipe_pedidos_old(times):
-    pipe = [
-        {
-            '$unwind': '$pedidos'
-        },
-        {
-            '$addFields': {
-                'mongotime': {'$toDate': '$_id'},
-                'compra_hora_value': {'$toDate': '$bubble.created_date'},
-                'entrega_hora_value': {
-                    '$toDate': {
-                        '$cond': {
-                            'if': { '$eq': ['$pedidos.entrega_hora', 'PE'] },
-                            'then': {
-                                '$dateAdd':
-                                    {
-                                        'startDate': {'$toDate': '$dados.confirm'},
-                                        'unit': "minute",
-                                        'amount': times['prazo_entrega'],
-                                    }
-                                },
-                            'else': '$pedidos.entrega_hora',
-                        }
-                    }
-                },
-            }
-        },
-        {
-            "$match":
-            {
-                "entrega_hora_value": { "$gte": times['start'], '$lt': times['end'],}
-                
-            },
-        },
-        {
-            "$project":
-                {
-                    '_id': 0,
-                    'entrega_hora_out': {'$dateToString': { 'format': '%Y-%m-%d %H:%M', 'date': "$entrega_hora_value", 'timezone': "America/Sao_Paulo" }},
-                    'compra_hora_out': {'$dateToString': { 'format': '%Y-%m-%d %H:%M', 'date': "$compra_hora_value", 'timezone': "America/Sao_Paulo" }},
-                    'mongo_hora_out': {'$dateToString': { 'format': '%Y-%m-%d %H:%M', 'date': "$mongotime", 'timezone': "America/Sao_Paulo" }},
-                    #'dados.confirm': 1,
-                    #'entrega_hora_value': 1,
-                    #'mongotime': 1,
-                },
-        }
-    ]
-    return pipe
 
 
 def pipe_pedidos(times):
@@ -368,16 +318,25 @@ def pipe_pedidos(times):
         },
         {
             '$addFields': {
+                # Horário da criação do registro no banco
+                # atentar para possível assincronia de DBs
                 'mongotime': {'$toDate': '$_id'},
+                # Horário da compra, criada no Bubble
                 'compra_hora_value': {'$toDate': '$bubble.created_date'},
+                # Horário da entrega, baseado em agendamento
+                # OU na hora da CONFIRMAÇÃO da compra (+ prazo de entrega)
                 'entrega_hora_value': {
                     '$toDate': {
                         '$cond': {
-                            'if': { '$eq': ['$pedidos.entrega_hora', 'PE'] },
+                            'if': {'$eq': [
+                                '$pedidos.entrega_hora', 'PE']
+                                },
                             'then': {
                                 '$dateAdd':
                                     {
-                                        'startDate': {'$toDate': '$dados.confirm'},
+                                        'startDate': {
+                                            '$toDate': '$dados.confirm'
+                                            },
                                         'unit': "minute",
                                         'amount': times['prazo_entrega'],
                                     }
@@ -391,8 +350,9 @@ def pipe_pedidos(times):
         {
             "$match":
             {
-                "entrega_hora_value": { "$gte": times['start'], '$lt': times['end'],}
-                
+                "entrega_hora_value": {
+                    "$gte": times['start'], '$lt': times['end']
+                    }
             },
         },
         {
@@ -439,16 +399,31 @@ def pipe_pedidos(times):
             "$project":
                 {
                     '_id': 0,
-                    'entrega_hora_out': {'$dateToString': { 'format': '%Y-%m-%d %H:%M', 'date': "$entrega_hora_value", 'timezone': "America/Sao_Paulo" }},
-                    'compra_hora_out': {'$dateToString': { 'format': '%Y-%m-%d %H:%M', 'date': "$compra_hora_value", 'timezone': "America/Sao_Paulo" }},
-                    'mongo_hora_out': {'$dateToString': { 'format': '%Y-%m-%d %H:%M', 'date': "$mongotime", 'timezone': "America/Sao_Paulo" }},
+                    'entrega_hora_out': {
+                        '$dateToString': {
+                            'format': '%Y-%m-%d %H:%M',
+                            'date': "$entrega_hora_value",
+                            'timezone': "America/Sao_Paulo"}
+                            },
+                    'compra_hora_out': {
+                        '$dateToString': {
+                            'format': '%Y-%m-%d %H:%M',
+                            'date': "$entrega_hora_value",
+                            'timezone': "America/Sao_Paulo"}
+                            },
+                    'mongo_hora_out': {
+                        '$dateToString': {
+                            'format': '%Y-%m-%d %H:%M',
+                            'date': "$entrega_hora_value",
+                            'timezone': "America/Sao_Paulo"}
+                            },
                     "número": "$compra_num.num",
                     "bio": "$usuario.bio",
                     "pgto_method": "$dados.pgto.method",
                     "pgto_status": "$dados.pgto.status",
                     "nf_num": "$nf._id",
                     "bubble": 1,
-                },                
+                },
         },
     ]
     return pipe
