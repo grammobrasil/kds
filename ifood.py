@@ -6,10 +6,9 @@ import time
 from kds.config import Config
 
 ids = {
-    'merchant_id': 'a826ba41-67e5-4f5d-87bb-f682749803f2',
-    'clientId': 'acd5908a-a113-4a0c-a6fc-d3902cfde3e4',
-    'clientSecret': 'lnimef2pacpwlm6t2ej6xdwy5gy77gtwcykkm'
-    + 'xghbbjwbromk7cc07ct1ec91z9yq9mduwm3h4zit9hes0ijgu3g0x2iuppd1pa',
+    'merchant_id': Config.ifood['merchant_id'],
+    'clientId': Config.ifood['clientId'],
+    'clientSecret': Config.ifood['clientSecret'],
 }
 
 url = {
