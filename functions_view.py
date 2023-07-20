@@ -265,17 +265,8 @@ def listen_pipes(start, end):
         {
             "$lookup":
             {
-                "from": "compra_num",
-                "localField": "bubble._id",
-                "foreignField": "_id",
-                "as": "compra_num"
-            },
-        },
-        {
-            "$lookup":
-            {
                 "from": "nf",
-                "localField": "compra_num.num",
+                "localField": "dados.compra_num",
                 "foreignField": "compra_num",
                 "as": "nf"
             },
@@ -298,7 +289,7 @@ def listen_pipes(start, end):
             {
                 "_id": -1,
                 "mongotime": {"$toDate": "$_id"},
-                "número": "$compra_num.num",
+                "número": "$dados.compra_num",
                 "bio": "$usuario.bio",
                 "pgto_method": "$dados.pgto.method",
                 "pgto_status": "$dados.pgto.status",
@@ -364,20 +355,12 @@ def pipe_pedidos(times):
                 "as": "usuario"
             },
         },
-        {
-            "$lookup":
-            {
-                "from": "compra_num",
-                "localField": "bubble._id",
-                "foreignField": "_id",
-                "as": "compra_num"
-            },
-        },
+
         {
             "$lookup":
             {
                 "from": "nf",
-                "localField": "compra_num.num",
+                "localField": "dados.compra_num",
                 "foreignField": "compra_num",
                 "as": "nf"
             },
@@ -417,7 +400,7 @@ def pipe_pedidos(times):
                             'date': "$entrega_hora_value",
                             'timezone': "America/Sao_Paulo"}
                             },
-                    "número": "$compra_num.num",
+                    "número": "$dados.compra_num",
                     "bio": "$usuario.bio",
                     "pgto_method": "$dados.pgto.method",
                     "pgto_status": "$dados.pgto.status",

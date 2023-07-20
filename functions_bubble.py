@@ -60,7 +60,7 @@ def read_bubble(thing, constraints=None, dev=''):
     return dict_pedidoboxput
 
 
-def read_bubble_id(thing, _id, dev=''):
+def read_bubble_id(thing, _id, dev='', method='GET'):
 
     session = requests.Session()
 
@@ -74,17 +74,24 @@ def read_bubble_id(thing, _id, dev=''):
     }
 
     url = base_url + '/' + _id + '?' + urllib.parse.urlencode(params)
-    response = session.get(url)
 
-    if response.status_code != 200:
-        raise ValueError(
-            'Error with status code {}, id = {}'.format(
-                response.status_code, _id
+    if method == 'GET':
+        session_method = session.get
+        response = session_method(url)
+        if response.status_code != 200:
+            raise ValueError(
+                'Error with status code {}, id = {}'.format(
+                    response.status_code, _id
+                    )
                 )
-            )
-        return None
-
-    return response.json()['response']
+            return None
+        return response.json()['response']
+    elif method == 'DELETE':
+        session_method = session.delete
+        response = session_method(url)
+        return response.status_code
+    else:
+        print(f"[!] Method {method} not supported")
 
 
 def acknowledge_bubble_id(thing, _id, timevalue, dev=''):
@@ -210,7 +217,7 @@ def get_bubble_lastdate(thing):
         return datetime(2020, 1, 1).strftime("%c")
 
 
-def set_compra_numero():
+def set_compra_numero_old():
 
     # get the last 'compra_num' from the DB
     last_compra = list(client.grammo.compra_num.aggregate([{
@@ -286,6 +293,7 @@ def copy_bubble_endereços(bubble_id):
 
 
 def copy_bubble_usr_unique(doc):
+    # doc = usr in bubble.users
 
     # check if fields exists, set empty if not
     DDD = doc['DDD'] if 'DDD' in doc else ''
@@ -342,63 +350,62 @@ def copy_bubble_usr_date(last_date):
         copy_bubble_usr_unique(doc)
 
 
+def copy_bubble_categorias_unique(categoria):
+    client.grammo.categorias.update_one(
+            {'bubble._id': categoria["_id"]},
+            {
+                "$set":
+                {
+                    'bubble':
+                        {
+                            '_id': categoria['_id'],
+                            'created_date': categoria['Created Date'],
+                            'modified_date': categoria['Modified Date'],
+                        },
+                    'dados':
+                        {
+                            'nome': categoria['nome'],
+                        },
+
+                }
+            },
+            upsert=True)
+
+
 def copy_bubble_categorias(last_date):
     # pipe bubble with result newer than the provided date
     pipe_bubble = [{"$match": {"Created Date": {"$gt": last_date}}}]
 
     # insert into the col
     for doc in client.bubble.categoria.aggregate(pipe_bubble):
-        client.grammo.categorias.update_one(
-            {'bubble._id': doc["_id"]},
-            {
-                "$set":
-                {
-                    'bubble':
-                        {
-                            '_id': doc['_id'],
-                            'created_date': doc['Created Date'],
-                            'modified_date': doc['Modified Date'],
-                        },
-                    'dados':
-                        {
-                            'nome': doc['nome'],
-                        },
-
-                }
-            },
-            upsert=True)
+        copy_bubble_categorias_unique(doc)
     return "'Categorias' successfully updated!"
 
 
-def copy_bubble_produtos(last_date):
-    # pipe bubble with result newer than the provided date
-    pipe_bubble = [{"$match": {"Created Date": {"$gt": last_date}}}]
-
-    # insert into the col
-    for doc in client.bubble.produto.aggregate(pipe_bubble):
-        # set the id of the 'categoria' from grammo DB
+def copy_bubble_produtos_unique(produto):
+    # set the id of the 'categoria' from grammo DB
         try:
             categ = client.grammo.categorias.find_one(
-                {'bubble._id': doc['categoria']}
+                {'bubble._id': produto['categoria']}
                 )["_id"]
         except Exception:
             categ = ''
 
         try:
-            nome = doc['Nome']
+            nome = produto['Nome']
         except Exception:
             compra_num = '' # noqa
 
         client.grammo.produtos.update_one(
-            {'bubble._id': doc["_id"]},
+            {'bubble._id': produto["_id"]},
             {
                 "$set":
                 {
                     'bubble':
                         {
-                            '_id': doc['_id'],
-                            'created_date': doc['Created Date'],
-                            'modified_date': doc['Modified Date'],
+                            '_id': produto['_id'],
+                            'created_date': produto['Created Date'],
+                            'modified_date': produto['Modified Date'],
                         },
                     'dados':
                         {
@@ -409,6 +416,15 @@ def copy_bubble_produtos(last_date):
                 }
             },
             upsert=True)
+
+
+def copy_bubble_produtos(last_date):
+    # pipe bubble with result newer than the provided date
+    pipe_bubble = [{"$match": {"Created Date": {"$gt": last_date}}}]
+
+    # insert into the col
+    for doc in client.bubble.produto.aggregate(pipe_bubble):
+        copy_bubble_produtos_unique(doc)
     return "'Produtos' successfully updated!"
 
 
@@ -441,6 +457,32 @@ def set_compra_numero_all():
                 "created_date": doc['Created Date'],
                 "num": num
             })
+
+
+def get_compra_numero():
+
+    # get the last 'compra_num' from the DB
+    result = client.grammo.compras.aggregate([
+        {
+            '$group': {
+                '_id': None,
+                'max_value': {'$max': '$dados.compra_num'}
+            }
+        },
+    ])
+    compra_num = next(result)['max_value']
+    return compra_num + 1
+
+
+def last_compra_num():
+
+    pipe = [
+        {'$sort': {'dados.compra_num': -1 }},
+        {'$limit': 1}
+    ]
+
+    compra_num = list(client.grammo.compras.aggregate(pipe))[0]['dados']['compra_num']
+    return compra_num
 
 
 def copy_bubble_compras_unique(compra):
@@ -736,7 +778,11 @@ def copy_bubble_compras_unique(compra):
                     "$set":
                     {
                         'bubble': dict_compra_bubble,
-                        'dados': {'usr': usr},
+                        'dados': {
+                            'usr': usr,
+                            'compra_num': last_compra_num() + 1,
+                            'confirm': dict_compra_bubble['hora pag'],
+                            },
                         'pedidos': list_pedido,
                     }
                 },
@@ -751,7 +797,11 @@ def copy_bubble_compras(last_date):
 
     for compra in client.bubble.compra.aggregate(pipe_bubble):
         # set the id of the usr from grammo DB
-        copy_bubble_compras_unique(compra)
+        try:
+            copy_bubble_compras_unique(compra)
+        except Exception as e:
+            print(e)
+            print(compra)
 
     return "'Compras' successfully updated!"
 
@@ -861,7 +911,7 @@ def copy_bubble_all():
     copy_bubble_categorias(get_date_grammo('categorias'))
     copy_bubble_produtos(get_date_grammo('produtos'))
     copy_bubble_compras(get_date_grammo('compras'))
-    set_compra_numero_all()
+    # set_compra_numero_all()
 
 
 # FUNCTION TO GET A SPECIFIC 'compra' by its number
@@ -952,3 +1002,19 @@ def sync_missing_compra_confirm():
             )
         except Exception as e:
             pass
+
+
+def sync_compra_num():
+    pipe = [{'$match': {'dados.compra_num': {'$exists': False }}}]
+
+    for doc in list( client.grammo.compras.aggregate(pipe)):
+        tmp = client.grammo.compra_num.find_one({'_id': doc['bubble']['_id']})
+        try:
+            coll.update_one(
+                {'_id': doc['_id']},
+                {'$set': {'dados.compra_num': tmp['num']}}
+                )
+        except DuplicateKeyError:
+            print('DuplicateKeyError')
+            print(doc['_id'])
+            print(tmp['num'])
