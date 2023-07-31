@@ -161,7 +161,7 @@ def get_db_lastdate(col):
                     "_id": 0,
                     # "nome": 1,
                     # "Creation Date": 1,
-                    # "Modified Date": 1,
+                    "Modified Date": 1,
                     "convertedDate": 1
                 },
         },
